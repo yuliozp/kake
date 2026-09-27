@@ -16,7 +16,6 @@ const STEPS = [
   { id: "size", title: "Tamaño" },
   { id: "sabor", title: "Sabor del pastel" },
   { id: "relleno", title: "Sabor del relleno" },
-  { id: "capas", title: "Cantidad de rellenos" },
   { id: "diseno", title: "Diseño favorito" },
   { id: "resumen", title: "Confirmar pedido" },
 ];
@@ -34,7 +33,7 @@ export default function PedidoPage() {
     deliveryTime: "15:00",
     deliveryType: "",
     deliveryAddress: "",
-    size: "", cakeFlavor: "", fillingFlavor: "", fillingCount: "",
+    size: "", cakeFlavor: "", fillingFlavor: "",
     designLabel: "", designImage: "", designPrice: 0,
     uploadPreview: "", designNotes: "",
   });
@@ -54,7 +53,6 @@ export default function PedidoPage() {
     add("size", form.size);
     add("cake_flavor", form.cakeFlavor);
     add("filling", form.fillingFlavor);
-    add("filling_count", form.fillingCount);
     add("delivery", form.deliveryType);
     t += Number(form.designPrice || 0);
     return t;
@@ -69,8 +67,7 @@ export default function PedidoPage() {
     if (step === 4 && !form.size) return setStatus("Elige un tamaño.");
     if (step === 5 && !form.cakeFlavor) return setStatus("Elige el sabor del pastel.");
     if (step === 6 && !form.fillingFlavor) return setStatus("Elige el sabor del relleno.");
-    if (step === 7 && !form.fillingCount) return setStatus("Elige 2 o 3 rellenos.");
-    if (step === 8 && !form.designLabel && !form.designNotes && !form.uploadPreview) return setStatus("Elige un diseño, descríbelo o sube una foto.");
+    if (step === 7 && !form.designLabel && !form.designNotes && !form.uploadPreview) return setStatus("Elige un diseño, descríbelo o sube una foto.");
     setStatus("");
     setStep((s) => Math.min(s + 1, STEPS.length - 1));
   }
@@ -105,7 +102,7 @@ export default function PedidoPage() {
         size: form.size,
         cakeFlavor: form.cakeFlavor,
         fillingFlavor: form.fillingFlavor,
-        fillingCount: form.fillingCount?.startsWith("3") ? 3 : 2,
+        fillingCount: 2,
         designLabel: form.designLabel,
         designImage: form.designImage || form.uploadPreview,
         selections: { ...form, designNotes: form.designNotes },
@@ -165,7 +162,6 @@ export default function PedidoPage() {
     ["Tamaño", form.size],
     ["Sabor del pastel", form.cakeFlavor],
     ["Relleno", form.fillingFlavor],
-    ["Capas", form.fillingCount],
     ["Diseño", form.designLabel || (form.uploadPreview ? "Diseño propio" : "—")],
     ["Descripción del kake", form.designNotes || "—"],
     ["Total", "$" + total.toFixed(2)],
@@ -218,12 +214,6 @@ export default function PedidoPage() {
               {current.id === "size" && <Options category="size" field="size" />}
               {current.id === "sabor" && <Options category="cake_flavor" field="cakeFlavor" />}
               {current.id === "relleno" && <Options category="filling" field="fillingFlavor" />}
-              {current.id === "capas" && (
-                <>
-                  <p className="note">Elige cuántas capas de relleno lleva tu kake. Cada foto muestra 2 o 3 rellenos.</p>
-                  <Options category="filling_count" field="fillingCount" />
-                </>
-              )}
               {current.id === "diseno" && (
                 <>
                   <p className="note">Elige un diseño, descríbelo o sube una foto. Inspiración: <a href={IMAGES.instagram} target="_blank">Instagram</a></p>
@@ -280,7 +270,6 @@ export default function PedidoPage() {
                 <li>Medida: {form.size || "—"}</li>
                 <li>Sabor: {form.cakeFlavor || "—"}</li>
                 <li>Relleno: {form.fillingFlavor || "—"}</li>
-                <li>Capas: {form.fillingCount || "—"}</li>
                 <li>Diseño: {form.designLabel || "—"}</li>
                 <li>{form.deliveryType || "Entrega"}</li>
               </ul>
