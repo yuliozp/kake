@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { addDesign, getFullCatalog, upsertOption } from "@/lib/db";
+import { addDesign, getFullCatalog, upsertModel, upsertOption } from "@/lib/db";
 
 export const dynamic = "force-dynamic";
 
@@ -24,6 +24,7 @@ export async function POST(req) {
   try {
     const body = await req.json();
     if (body.type === "design") await addDesign(body);
+    else if (body.type === "model") await upsertModel(body);
     else await upsertOption(body);
     return NextResponse.json({ ok: true });
   } catch (e) {
