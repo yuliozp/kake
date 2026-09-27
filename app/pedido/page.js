@@ -76,7 +76,7 @@ export default function PedidoPage() {
     if (current.id === "sabor" && !form.cakeFlavor) return setStatus("Elige el sabor del pastel.");
     if (current.id === "relleno" && !form.fillingFlavor) return setStatus("Elige el sabor del relleno.");
     if (current.id === "capas" && !form.fillingCount) return setStatus("Elige la cantidad de rellenos.");
-    if (current.id === "diseno" && !form.designLabel && !form.designNotes && !form.uploadPreview) return setStatus("Elige un diseno, describelo o sube una foto.");
+    if (current.id === "diseno" && !form.designNotes && !form.uploadPreview) return setStatus("Describe tu kake o sube una foto.");
     setStatus("");
     setStep((s) => Math.min(s + 1, STEPS.length - 1));
   }
@@ -107,7 +107,7 @@ export default function PedidoPage() {
         cakeFlavor: form.cakeFlavor,
         fillingFlavor: form.fillingFlavor,
         fillingCount: form.fillingCount?.startsWith("3") ? 3 : 2,
-        designLabel: form.designLabel,
+        designLabel: form.designLabel || "Diseno propio",
         designImage: form.designImage || form.uploadPreview,
         selections: { ...form, designNotes: form.designNotes },
         total,
@@ -154,7 +154,7 @@ export default function PedidoPage() {
     ["Sabor del pastel", form.cakeFlavor],
     ["Relleno", form.fillingFlavor],
     has("filling_count") ? ["Capas", form.fillingCount] : null,
-    ["Diseno", form.designLabel || "-"],
+    ["Diseno", form.designLabel || "Diseno propio"],
     ["Descripcion", form.designNotes || "-"],
     ["Total", "$" + total.toFixed(2)],
   ].filter(Boolean);
@@ -201,10 +201,12 @@ export default function PedidoPage() {
               {current.id === "capas" && <Options category="filling_count" field="fillingCount" />}
               {current.id === "diseno" && (
                 <>
-                  <Options extra={(catalog.designs || []).map((d) => ({ ...d, image: d.image || d.image_url }))} field="designLabel" />
-                  <textarea rows={4} placeholder="Describe tu kake" value={form.designNotes} onChange={(e) => setForm({ ...form, designNotes: e.target.value })} />
+                  <p className="note">Sube una foto o describe como lo quieres. Asi me enseñas tu idea.</p>
+                  <label>Sube tu foto de referencia</label>
                   <input type="file" accept="image/*" onChange={onUpload} />
                   {form.uploadPreview && <img src={form.uploadPreview} alt="" style={{ maxWidth: 220, marginTop: 10, borderRadius: 16 }} />}
+                  <label style={{ marginTop: 12 }}>O describe tu kake</label>
+                  <textarea rows={4} placeholder="Colores, frase, personaje, flores..." value={form.designNotes} onChange={(e) => setForm({ ...form, designNotes: e.target.value })} />
                 </>
               )}
               {current.id === "resumen" && (
@@ -235,7 +237,7 @@ export default function PedidoPage() {
                 <li>Medida: {form.size || "-"}</li>
                 <li>Sabor: {form.cakeFlavor || "-"}</li>
                 <li>Relleno: {form.fillingFlavor || "-"}</li>
-                <li>Diseno: {form.designLabel || "-"}</li>
+                <li>Diseno: {form.designLabel || "Diseno propio"}</li>
               </ul>
             </aside>
           </div>
