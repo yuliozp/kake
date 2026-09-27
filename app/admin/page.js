@@ -2,6 +2,7 @@
 import { useState } from "react";
 
 const emptyOpt = { id: null, category: "size", label: "", description: "", price: 0, image_url: "" };
+const HIDDEN_CATS = new Set(["filling_count", "delivery"]);
 
 function fileToDataUrl(file, max = 900) {
   return new Promise((resolve, reject) => {
@@ -104,6 +105,7 @@ export default function AdminPage() {
 
   const grouped = {};
   (data?.options || []).forEach((o) => {
+    if (HIDDEN_CATS.has(o.category)) return;
     grouped[o.category] = grouped[o.category] || [];
     grouped[o.category].push(o);
   });
@@ -112,10 +114,6 @@ export default function AdminPage() {
     size: "Tamaño",
     cake_flavor: "Sabor pastel",
     filling: "Sabor relleno",
-    filling_count: "Cantidad rellenos",
-    delivery: "Envío / recogida",
-    shape: "Forma",
-    frosting: "Cobertura",
   };
 
   return (
@@ -139,8 +137,6 @@ export default function AdminPage() {
                 <option value="size">Tamaño</option>
                 <option value="cake_flavor">Sabor pastel</option>
                 <option value="filling">Sabor relleno</option>
-                <option value="filling_count">Cantidad rellenos</option>
-                <option value="delivery">Envío / recogida</option>
               </select>
               <label>Nombre que ve el cliente *</label>
               <input required placeholder="Etiqueta" value={opt.label} onChange={(e) => setOpt({ ...opt, label: e.target.value })} />
