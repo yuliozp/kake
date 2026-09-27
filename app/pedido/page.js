@@ -26,6 +26,7 @@ export default function PedidoPage() {
   const [step, setStep] = useState(0);
   const [open, setOpen] = useState(true);
   const [status, setStatus] = useState("");
+  const [saving, setSaving] = useState(false);
   const [form, setForm] = useState({
     name: "", phone: "", email: "", address: "",
     deliveryDate: tomorrowISO(),
@@ -34,7 +35,7 @@ export default function PedidoPage() {
     deliveryAddress: "",
     size: "", cakeFlavor: "", fillingFlavor: "", fillingCount: "",
     designLabel: "", designImage: "", designPrice: 0,
-    uploadPreview: "",
+    uploadPreview: "", designNotes: "",
   });
 
   useEffect(() => {
@@ -62,12 +63,28 @@ export default function PedidoPage() {
 
   function next() {
     if (step === 0 && (!form.name || !form.phone || !form.email)) return setStatus("Completa nombre, teléfono y email.");
-    if (step === 3 && form.deliveryType?.includes("Envío") && !form.deliveryAddress) return setStatus("Escribe la dirección de envío.");
+    if (step === 3 && form.deliveryType?.toLowerCase().includes("env") && !form.deliveryAddress) return setStatus("Escribe la dirección de envío.");
     setStatus("");
     setStep((s) => Math.min(s + 1, STEPS.length - 1));
   }
 
+  function onUpload(e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      setForm((f) => ({
+        ...f,
+        uploadPreview: reader.result,
+        designImage: reader.result,
+        designLabel: f.designLabel || "Diseño propio",
+      }));
+    };
+    reader.readAsDataURL(file);
+  }
+
   async function submit() {
+    setSaving(true);
     setStatus("Guardando...");
     const res = await fetch("/api/orders", {
       method: "POST",
@@ -84,11 +101,12 @@ export default function PedidoPage() {
         fillingCount: form.fillingCount?.startsWith("3") ? 3 : 2,
         designLabel: form.designLabel,
         designImage: form.designImage || form.uploadPreview,
-        selections: form,
+        selections: { ...form, designNotes: form.designNotes },
         total,
       }),
     });
     const data = await res.json();
+    setSaving(false);
     if (!res.ok) return setStatus(data.error || "Error al guardar");
     setStatus("¡Pedido " + data.orderNumber + " confirmado!");
   }
@@ -116,6 +134,22 @@ export default function PedidoPage() {
   }
 
   const current = STEPS[step];
+  const rows = [
+    ["Cliente", form.name],
+    ["Teléfono", form.phone],
+    ["Email", form.email],
+    ["Entrega", form.deliveryType],
+    ["Dirección", form.deliveryAddress || form.address || "—"],
+    ["Fecha", form.deliveryDate],
+    ["Hora", form.deliveryTime],
+    ["Tamaño", form.size],
+    ["Sabor del pastel", form.cakeFlavor],
+    ["Relleno", form.fillingFlavor],
+    ["Capas", form.fillingCount],
+    ["Diseño", form.designLabel || (form.uploadPreview ? "Diseño propio" : "—")],
+    ["Descripción del kake", form.designNotes || "—"],
+    ["Total", "$" + total.toFixed(2)],
+  ];
 
   return (
     <main className="wrap">
@@ -153,7 +187,7 @@ export default function PedidoPage() {
               {current.id === "envio" && (
                 <>
                   <Options category="delivery" field="deliveryType" />
-                  {form.deliveryType?.toLowerCase().includes("envío") || form.deliveryType?.toLowerCase().includes("envio") ? (
+                  {form.deliveryType?.toLowerCase().includes("env") ? (
                     <>
                       <label>Dirección detallada de envío</label>
                       <textarea rows={3} value={form.deliveryAddress} onChange={(e) => setForm({ ...form, deliveryAddress: e.target.value })} />
@@ -167,19 +201,31 @@ export default function PedidoPage() {
               {current.id === "capas" && <Options category="filling_count" field="fillingCount" />}
               {current.id === "diseno" && (
                 <>
-                  <p className="note">Elige del banco Kake o sube tu referencia. Inspiración: <a href={IMAGES.instagram} target="_blank">Instagram</a></p>
+                  <p className="note">Elige un diseño de la galería, descríbelo o sube una foto. Inspiración: <a href={IMAGES.instagram} target="_blank">Instagram</a></p>
                   <Options extra={(catalog.designs || []).map((d) => ({ ...d, image: d.image || d.image_url }))} field="designLabel" />
-                  <label>O sube / pega URL de tu imagen</label>
-                  <input placeholder="https://..." onChange={(e) => setForm({ ...form, uploadPreview: e.target.value, designImage: e.target.value, designLabel: form.designLabel || "Diseño propio" })} />
+                  <label>Describe cómo quieres tu kake</label>
+                  <textarea rows={4} placeholder="Colores, frase, personaje, flores, número de velas..." value={form.designNotes} onChange={(e) => setForm({ ...form, designNotes: e.target.value })} />
+                  <label>O sube una imagen de referencia</label>
+                  <input type="file" accept="image/*" onChange={onUpload} />
+                  {form.uploadPreview && <img src={form.uploadPreview} alt="Tu referencia" style={{ maxWidth: "220px", marginTop: 10, borderRadius: 16 }} />}
+                  <label>O pega la URL de una imagen</label>
+                  <input placeholder="https://..." value={form.uploadPreview?.startsWith("http") ? form.uploadPreview : ""} onChange={(e) => setForm({ ...form, uploadPreview: e.target.value, designImage: e.target.value, designLabel: form.designLabel || "Diseño propio" })} />
                 </>
               )}
               {current.id === "resumen" && (
                 <div>
-                  <p><b>{form.name}</b> · {form.phone} · {form.email}</p>
-                  <p>{form.deliveryType} · {form.deliveryDate} {form.deliveryTime}</p>
-                  <p>{form.size} · {form.cakeFlavor} · relleno {form.fillingFlavor} · {form.fillingCount}</p>
-                  <p>Diseño: {form.designLabel || "propio"}</p>
-                  <button className="btn" onClick={submit}>Confirmar y guardar pedido</button>
+                  <p>Revisa cada opción antes de realizar el pedido.</p>
+                  <table className="table">
+                    <tbody>
+                      {rows.map(([k, v]) => (
+                        <tr key={k}><th>{k}</th><td>{String(v || "—")}</td></tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  {previewImg && <img src={previewImg} alt="Diseño" style={{ maxWidth: "240px", margin: "12px 0", borderRadius: 16 }} />}
+                  <button className="btn" disabled={saving || status.includes("confirmado")} onClick={submit}>
+                    {saving ? "Enviando..." : "Confirmar opciones y realizar pedido"}
+                  </button>
                 </div>
               )}
               {status && <p className="note">{status}</p>}
