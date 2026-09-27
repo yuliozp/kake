@@ -10,17 +10,6 @@ function tomorrowISO() {
 
 const DELIVERY_NOTE = "Para solicitar envio consulte el costo segun la distancia.";
 
-const STEPS = [
-  { id: "cliente", title: "Tus datos" },
-  { id: "fecha", title: "Fecha de entrega" },
-  { id: "hora", title: "Hora de entrega" },
-  { id: "size", title: "Tamano" },
-  { id: "sabor", title: "Sabor del pastel" },
-  { id: "relleno", title: "Sabor del relleno" },
-  { id: "diseno", title: "Diseno favorito" },
-  { id: "resumen", title: "Confirmar pedido" },
-];
-
 export default function PedidoPage() {
   const [catalog, setCatalog] = useState(defaultCatalog);
   const [step, setStep] = useState(0);
@@ -32,9 +21,9 @@ export default function PedidoPage() {
     name: "", phone: "", email: "", address: "",
     deliveryDate: tomorrowISO(),
     deliveryTime: "15:00",
-    deliveryType: DELIVERY_NOTE,
+    deliveryType: "",
     deliveryAddress: "",
-    size: "", cakeFlavor: "", fillingFlavor: "",
+    size: "", cakeFlavor: "", fillingFlavor: "", fillingCount: "",
     designLabel: "", designImage: "", designPrice: 0,
     uploadPreview: "", designNotes: "",
   });
@@ -45,8 +34,25 @@ export default function PedidoPage() {
     }).catch(() => {});
   }, []);
 
-  const by = (cat) => (catalog.options || []).filter((o) => o.category === cat && o.category !== "delivery" && o.category !== "filling_count");
+  const by = (cat) => (catalog.options || []).filter((o) => o.category === cat);
   const find = (cat, label) => by(cat).find((o) => o.label === label);
+  const has = (cat) => by(cat).length > 0;
+
+  const STEPS = useMemo(() => {
+    const s = [
+      { id: "cliente", title: "Tus datos" },
+      { id: "fecha", title: "Fecha de entrega" },
+      { id: "hora", title: "Hora de entrega" },
+    ];
+    if (has("delivery")) s.push({ id: "envio", title: "Envio o recogida" });
+    if (has("size")) s.push({ id: "size", title: "Tamano" });
+    if (has("cake_flavor")) s.push({ id: "sabor", title: "Sabor del pastel" });
+    if (has("filling")) s.push({ id: "relleno", title: "Sabor del relleno" });
+    if (has("filling_count")) s.push({ id: "capas", title: "Cantidad de rellenos" });
+    s.push({ id: "diseno", title: "Diseno favorito" });
+    s.push({ id: "resumen", title: "Confirmar pedido" });
+    return s;
+  }, [catalog]);
 
   const total = useMemo(() => {
     let t = 0;
@@ -54,18 +60,23 @@ export default function PedidoPage() {
     add("size", form.size);
     add("cake_flavor", form.cakeFlavor);
     add("filling", form.fillingFlavor);
+    add("filling_count", form.fillingCount);
+    add("delivery", form.deliveryType);
     t += Number(form.designPrice || 0);
     return t;
   }, [form, catalog]);
 
   const previewImg = form.designImage || form.uploadPreview || find("size", form.size)?.image || find("cake_flavor", form.cakeFlavor)?.image || IMAGES.hero;
+  const current = STEPS[step] || STEPS[0];
 
   function next() {
-    if (step === 0 && (!form.name || !form.phone || !form.email)) return setStatus("Completa nombre, telefono y email.");
-    if (step === 3 && !form.size) return setStatus("Elige un tamano.");
-    if (step === 4 && !form.cakeFlavor) return setStatus("Elige el sabor del pastel.");
-    if (step === 5 && !form.fillingFlavor) return setStatus("Elige el sabor del relleno.");
-    if (step === 6 && !form.designLabel && !form.designNotes && !form.uploadPreview) return setStatus("Elige un diseno, describelo o sube una foto.");
+    if (current.id === "cliente" && (!form.name || !form.phone || !form.email)) return setStatus("Completa nombre, telefono y email.");
+    if (current.id === "envio" && !form.deliveryType) return setStatus("Elige envio o recogida.");
+    if (current.id === "size" && !form.size) return setStatus("Elige un tamano.");
+    if (current.id === "sabor" && !form.cakeFlavor) return setStatus("Elige el sabor del pastel.");
+    if (current.id === "relleno" && !form.fillingFlavor) return setStatus("Elige el sabor del relleno.");
+    if (current.id === "capas" && !form.fillingCount) return setStatus("Elige la cantidad de rellenos.");
+    if (current.id === "diseno" && !form.designLabel && !form.designNotes && !form.uploadPreview) return setStatus("Elige un diseno, describelo o sube una foto.");
     setStatus("");
     setStep((s) => Math.min(s + 1, STEPS.length - 1));
   }
@@ -75,12 +86,7 @@ export default function PedidoPage() {
     if (!file) return;
     const reader = new FileReader();
     reader.onload = () => {
-      setForm((f) => ({
-        ...f,
-        uploadPreview: reader.result,
-        designImage: reader.result,
-        designLabel: f.designLabel || "Diseno propio",
-      }));
+      setForm((f) => ({ ...f, uploadPreview: reader.result, designImage: reader.result, designLabel: f.designLabel || "Diseno propio" }));
     };
     reader.readAsDataURL(file);
   }
@@ -93,14 +99,14 @@ export default function PedidoPage() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         customer: { name: form.name, phone: form.phone, email: form.email, address: form.address || form.deliveryAddress },
-        deliveryType: DELIVERY_NOTE,
+        deliveryType: has("delivery") ? form.deliveryType : DELIVERY_NOTE,
         deliveryAddress: form.deliveryAddress || form.address || "",
         deliveryDate: form.deliveryDate,
         deliveryTime: form.deliveryTime,
         size: form.size,
         cakeFlavor: form.cakeFlavor,
         fillingFlavor: form.fillingFlavor,
-        fillingCount: 2,
+        fillingCount: form.fillingCount?.startsWith("3") ? 3 : 2,
         designLabel: form.designLabel,
         designImage: form.designImage || form.uploadPreview,
         selections: { ...form, designNotes: form.designNotes },
@@ -113,9 +119,6 @@ export default function PedidoPage() {
     setOrderNumber(data.orderNumber);
     setStatus("Pedido " + data.orderNumber + " confirmado!");
   }
-
-  function printTicket() { window.print(); }
-  function closeWizard() { setOpen(false); setStep(0); setStatus(""); setOrderNumber(""); }
 
   function Options({ category, field, extra }) {
     const items = extra || by(category);
@@ -139,29 +142,27 @@ export default function PedidoPage() {
     );
   }
 
-  const current = STEPS[step];
   const rows = [
     ["No. pedido", orderNumber || "(se asigna al confirmar)"],
     ["Cliente", form.name],
     ["Telefono", form.phone],
     ["Email", form.email],
-    ["Entrega", DELIVERY_NOTE],
-    ["Direccion", form.address || "-"],
+    ["Entrega", has("delivery") ? (form.deliveryType || "-") : DELIVERY_NOTE],
     ["Fecha", form.deliveryDate],
     ["Hora", form.deliveryTime],
     ["Tamano", form.size],
     ["Sabor del pastel", form.cakeFlavor],
     ["Relleno", form.fillingFlavor],
-    ["Diseno", form.designLabel || (form.uploadPreview ? "Diseno propio" : "-")],
-    ["Descripcion del kake", form.designNotes || "-"],
+    has("filling_count") ? ["Capas", form.fillingCount] : null,
+    ["Diseno", form.designLabel || "-"],
+    ["Descripcion", form.designNotes || "-"],
     ["Total", "$" + total.toFixed(2)],
-  ];
+  ].filter(Boolean);
 
   return (
     <main className="wrap">
       <div className="card no-print">
         <h2>Arma tu kake</h2>
-        <p className="note">Cada paso es una pantalla. El precio se actualiza con cada eleccion.</p>
         <p className="note">{DELIVERY_NOTE}</p>
         <button className="btn" onClick={() => setOpen(true)}>Continuar personalizacion</button>
       </div>
@@ -179,58 +180,42 @@ export default function PedidoPage() {
                   <label>Direccion (opcional)</label><input value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} />
                 </>
               )}
-              {current.id === "fecha" && (
-                <>
-                  <label>Fecha de entrega (predeterminada: manana) *</label>
-                  <input type="date" min={tomorrowISO()} value={form.deliveryDate} onChange={(e) => setForm({ ...form, deliveryDate: e.target.value })} />
-                </>
-              )}
+              {current.id === "fecha" && <input type="date" min={tomorrowISO()} value={form.deliveryDate} onChange={(e) => setForm({ ...form, deliveryDate: e.target.value })} />}
               {current.id === "hora" && (
                 <>
-                  <label>Hora de entrega *</label>
                   <input type="time" value={form.deliveryTime} onChange={(e) => setForm({ ...form, deliveryTime: e.target.value })} />
                   <p className="note">{DELIVERY_NOTE}</p>
+                </>
+              )}
+              {current.id === "envio" && (
+                <>
+                  <Options category="delivery" field="deliveryType" />
+                  {String(form.deliveryType).toLowerCase().includes("env") && (
+                    <textarea rows={3} placeholder="Direccion de envio" value={form.deliveryAddress} onChange={(e) => setForm({ ...form, deliveryAddress: e.target.value })} />
+                  )}
                 </>
               )}
               {current.id === "size" && <Options category="size" field="size" />}
               {current.id === "sabor" && <Options category="cake_flavor" field="cakeFlavor" />}
               {current.id === "relleno" && <Options category="filling" field="fillingFlavor" />}
+              {current.id === "capas" && <Options category="filling_count" field="fillingCount" />}
               {current.id === "diseno" && (
                 <>
-                  <p className="note">Elige un diseno, describelo o sube una foto.</p>
                   <Options extra={(catalog.designs || []).map((d) => ({ ...d, image: d.image || d.image_url }))} field="designLabel" />
-                  <label>Describe como quieres tu kake</label>
-                  <textarea rows={4} placeholder="Colores, frase, personaje, flores..." value={form.designNotes} onChange={(e) => setForm({ ...form, designNotes: e.target.value })} />
-                  <label>O sube una imagen de referencia</label>
+                  <textarea rows={4} placeholder="Describe tu kake" value={form.designNotes} onChange={(e) => setForm({ ...form, designNotes: e.target.value })} />
                   <input type="file" accept="image/*" onChange={onUpload} />
-                  {form.uploadPreview && <img src={form.uploadPreview} alt="Tu referencia" style={{ maxWidth: "220px", marginTop: 10, borderRadius: 16 }} />}
+                  {form.uploadPreview && <img src={form.uploadPreview} alt="" style={{ maxWidth: 220, marginTop: 10, borderRadius: 16 }} />}
                 </>
               )}
               {current.id === "resumen" && (
                 <div>
                   <p className="note">{DELIVERY_NOTE}</p>
-                  <div id="ticket" className="ticket">
-                    <h2>Karla's Bake</h2>
-                    <p className="ticket-no">{orderNumber || "Pedido pendiente de confirmar"}</p>
-                    <p>Ticket de pedido</p>
-                    <table className="table">
-                      <tbody>
-                        {rows.map(([k, v]) => (
-                          <tr key={k}><th>{k}</th><td>{String(v || "-")}</td></tr>
-                        ))}
-                      </tbody>
-                    </table>
-                    {previewImg && <img src={previewImg} alt="Diseno" style={{ maxWidth: "240px", margin: "12px 0", borderRadius: 16 }} />}
-                  </div>
-                  {!orderNumber && (
-                    <button className="btn no-print" disabled={saving} onClick={submit}>
-                      {saving ? "Enviando..." : "Confirmar opciones y realizar pedido"}
-                    </button>
-                  )}
+                  <table className="table"><tbody>{rows.map(([k, v]) => <tr key={k}><th>{k}</th><td>{String(v || "-")}</td></tr>)}</tbody></table>
+                  {!orderNumber && <button className="btn no-print" disabled={saving} onClick={submit}>{saving ? "Enviando..." : "Confirmar y realizar pedido"}</button>}
                   {orderNumber && (
                     <div className="row no-print">
-                      <button className="btn" onClick={printTicket}>Descargar / imprimir pedido</button>
-                      <button className="btn ghost" onClick={closeWizard}>Cerrar ventana</button>
+                      <button className="btn" onClick={() => window.print()}>Imprimir</button>
+                      <button className="btn ghost" onClick={() => { setOpen(false); setStep(0); setOrderNumber(""); }}>Cerrar</button>
                     </div>
                   )}
                 </div>
@@ -252,7 +237,6 @@ export default function PedidoPage() {
                 <li>Relleno: {form.fillingFlavor || "-"}</li>
                 <li>Diseno: {form.designLabel || "-"}</li>
               </ul>
-              <p className="note">{DELIVERY_NOTE}</p>
             </aside>
           </div>
         </div>
