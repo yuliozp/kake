@@ -46,7 +46,7 @@ h1 { font-size: clamp(36px, 6vw, 64px); line-height: 1; margin: 0 0 12px; }
   border: 2px solid #ffe0ea; border-radius: 18px; overflow: hidden; cursor: pointer; background: #fff;
 }
 .opt.selected { border-color: var(--pink); box-shadow: 0 0 0 3px #ffd0de; }
-.opt img { width: 100%; height: 120px; object-fit: cover; display: block; }
+.opt img { width: 100%; height: 140px; object-fit: cover; display: block; }
 .opt .meta { padding: 10px 12px; }
 .opt .price { color: var(--pink-dark); font-weight: 800; }
 .modal-bg {
@@ -70,10 +70,19 @@ label { display: block; font-weight: 700; margin: 10px 0 6px; }
 .table { width: 100%; border-collapse: collapse; font-size: 13px; }
 .table th, .table td { border-bottom: 1px solid #f3d5de; padding: 8px; text-align: left; }
 .note { font-size: 13px; opacity: .7; }
+.ticket { background: #fff; border: 2px dashed #ffd0de; border-radius: 18px; padding: 16px; }
+.ticket-no { font-size: 28px; font-weight: 900; color: var(--pink-dark); margin: 0; }
 .lang-switch { display: flex; border: 2px solid #ffd0de; border-radius: 999px; overflow: hidden; background: #fff; }
 .lang-switch button { border: 0; background: transparent; padding: 8px 12px; cursor: pointer; font-weight: 800; }
 .lang-switch button.on { background: var(--pink); color: #fff; }
 @media (max-width: 800px) {
   .hero, .modal { grid-template-columns: 1fr; }
   .hero img { height: 240px; }
+}
+@media print {
+  body { background: #fff; }
+  .no-print, .nav, .preview, .modal-bg { position: static !important; background: #fff !important; }
+  .modal { display: block; box-shadow: none; max-height: none; width: 100%; }
+  .no-print { display: none !important; }
+  .ticket { border: 1px solid #333; }
 }
