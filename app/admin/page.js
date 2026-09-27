@@ -37,7 +37,6 @@ export default function AdminPage() {
   const [orders, setOrders] = useState([]);
   const [msg, setMsg] = useState("");
   const [opt, setOpt] = useState(emptyOpt);
-  const [design, setDesign] = useState({ label: "", image_url: "", price: 0 });
 
   async function load() {
     const res = await fetch("/api/admin", { headers: { "x-admin-key": key } });
@@ -69,15 +68,6 @@ export default function AdminPage() {
     setMsg("Foto lista. Guarda los cambios.");
   }
 
-  async function onDesignFile(e) {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setMsg("Cargando foto...");
-    const url = await fileToDataUrl(file);
-    setDesign((d) => ({ ...d, image_url: url }));
-    setMsg("Foto lista. Agrega el diseno.");
-  }
-
   async function saveOption(e) {
     e.preventDefault();
     if (!opt.category || !String(opt.label).trim()) return setMsg("Categoria y nombre son obligatorios.");
@@ -99,32 +89,15 @@ export default function AdminPage() {
 
   async function hideCategory(cat) {
     const rows = (data.options || []).filter((o) => o.category === cat);
-    for (const o of rows) {
-      await postOption({ ...o, image_url: o.image_url || "", active: false });
-    }
-    setMsg("Categoria ocultada. El cliente ya no la ve.");
+    for (const o of rows) await postOption({ ...o, image_url: o.image_url || "", active: false });
+    setMsg("Categoria ocultada.");
     load();
   }
 
   async function showCategory(cat) {
     const rows = (data.options || []).filter((o) => o.category === cat);
-    for (const o of rows) {
-      await postOption({ ...o, image_url: o.image_url || "", active: true });
-    }
+    for (const o of rows) await postOption({ ...o, image_url: o.image_url || "", active: true });
     setMsg("Categoria visible otra vez.");
-    load();
-  }
-
-  async function saveDesign(e) {
-    e.preventDefault();
-    if (!String(design.label).trim() || !design.image_url) return setMsg("El diseno necesita nombre y foto.");
-    const res = await fetch("/api/admin", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "x-admin-key": key },
-      body: JSON.stringify({ type: "design", ...design }),
-    });
-    setMsg((await res.json()).error || "Diseno agregado");
-    setDesign({ label: "", image_url: "", price: 0 });
     load();
   }
 
@@ -146,13 +119,12 @@ export default function AdminPage() {
     grouped[o.category] = grouped[o.category] || [];
     grouped[o.category].push(o);
   });
-  const catName = Object.fromEntries(CAT);
 
   return (
     <main className="wrap">
       <div className="card">
         <h2>Panel admin kake</h2>
-        <p className="note">Clave: <code>kake</code>. Oculta un campo y el cliente deja de verlo en el pedido.</p>
+        <p className="note">Clave: <code>kake</code></p>
         <label>Clave admin</label>
         <input value={key} onChange={(e) => setKey(e.target.value)} />
         <button className="btn" style={{ marginTop: 12 }} onClick={load}>Entrar</button>
@@ -213,26 +185,6 @@ export default function AdminPage() {
               </div>
             </div>
           ))}
-
-          <div className="card" style={{ marginTop: 16 }}>
-            <h3>Banco de disenos</h3>
-            <form onSubmit={saveDesign}>
-              <input required placeholder="Nombre" value={design.label} onChange={(e) => setDesign({ ...design, label: e.target.value })} />
-              <input type="file" accept="image/*" onChange={onDesignFile} />
-              <input placeholder="o URL" value={String(design.image_url || "").startsWith("data:") ? "" : design.image_url} onChange={(e) => setDesign({ ...design, image_url: e.target.value })} />
-              {design.image_url ? <img src={design.image_url} alt="" style={{ maxWidth: 160, borderRadius: 12 }} /> : null}
-              <input type="number" step="0.01" placeholder="Precio extra" value={design.price} onChange={(e) => setDesign({ ...design, price: Number(e.target.value) })} />
-              <button className="btn">Agregar</button>
-            </form>
-            <div className="grid" style={{ marginTop: 12 }}>
-              {(data.designs || []).map((d) => (
-                <div className="opt" key={d.id}>
-                  <img src={d.image_url || d.image} alt={d.label} />
-                  <div className="meta"><strong>{d.label}</strong><div className="price">+ ${Number(d.price||0).toFixed(2)}</div></div>
-                </div>
-              ))}
-            </div>
-          </div>
 
           <div className="card" style={{ marginTop: 16 }}>
             <h3>Pedidos</h3>
