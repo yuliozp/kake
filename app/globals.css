@@ -23,6 +23,8 @@ button, input, select, textarea { font: inherit; }
 }
 .logo { font-weight: 900; font-size: 28px; letter-spacing: -1px; }
 .logo span { color: var(--pink); }
+.logo.brand { display: flex; align-items: center; gap: 10px; }
+.brand-img { height: 64px; width: auto; max-width: 220px; object-fit: contain; display: block; background: #fff; border-radius: 50%; }
 .hero {
   display: grid; grid-template-columns: 1.1fr 0.9fr; gap: 32px; align-items: center;
   padding: 20px 24px 48px;
