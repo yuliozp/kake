@@ -27,6 +27,7 @@ export default function PedidoPage() {
   const [open, setOpen] = useState(true);
   const [status, setStatus] = useState("");
   const [saving, setSaving] = useState(false);
+  const [orderNumber, setOrderNumber] = useState("");
   const [form, setForm] = useState({
     name: "", phone: "", email: "", address: "",
     deliveryDate: tomorrowISO(),
@@ -63,7 +64,13 @@ export default function PedidoPage() {
 
   function next() {
     if (step === 0 && (!form.name || !form.phone || !form.email)) return setStatus("Completa nombre, teléfono y email.");
+    if (step === 3 && !form.deliveryType) return setStatus("Elige envío o recogida.");
     if (step === 3 && form.deliveryType?.toLowerCase().includes("env") && !form.deliveryAddress) return setStatus("Escribe la dirección de envío.");
+    if (step === 4 && !form.size) return setStatus("Elige un tamaño.");
+    if (step === 5 && !form.cakeFlavor) return setStatus("Elige el sabor del pastel.");
+    if (step === 6 && !form.fillingFlavor) return setStatus("Elige el sabor del relleno.");
+    if (step === 7 && !form.fillingCount) return setStatus("Elige 2 o 3 rellenos.");
+    if (step === 8 && !form.designLabel && !form.designNotes && !form.uploadPreview) return setStatus("Elige un diseño, descríbelo o sube una foto.");
     setStatus("");
     setStep((s) => Math.min(s + 1, STEPS.length - 1));
   }
@@ -108,7 +115,19 @@ export default function PedidoPage() {
     const data = await res.json();
     setSaving(false);
     if (!res.ok) return setStatus(data.error || "Error al guardar");
+    setOrderNumber(data.orderNumber);
     setStatus("¡Pedido " + data.orderNumber + " confirmado!");
+  }
+
+  function printTicket() {
+    window.print();
+  }
+
+  function closeWizard() {
+    setOpen(false);
+    setStep(0);
+    setStatus("");
+    setOrderNumber("");
   }
 
   function Options({ category, field, extra }) {
@@ -135,6 +154,7 @@ export default function PedidoPage() {
 
   const current = STEPS[step];
   const rows = [
+    ["No. pedido", orderNumber || "(se asigna al confirmar)"],
     ["Cliente", form.name],
     ["Teléfono", form.phone],
     ["Email", form.email],
@@ -153,7 +173,7 @@ export default function PedidoPage() {
 
   return (
     <main className="wrap">
-      <div className="card">
+      <div className="card no-print">
         <h2>Arma tu kake</h2>
         <p className="note">Cada paso es una pantalla. El precio se actualiza con cada elección.</p>
         <button className="btn" onClick={() => setOpen(true)}>Continuar personalización</button>
@@ -162,25 +182,25 @@ export default function PedidoPage() {
         <div className="modal-bg">
           <div className="modal">
             <div>
-              <p className="note">Paso {step + 1} de {STEPS.length}</p>
-              <h2>{current.title}</h2>
+              <p className="note no-print">Paso {step + 1} de {STEPS.length}</p>
+              <h2 className="no-print">{current.title}</h2>
               {current.id === "cliente" && (
                 <>
-                  <label>Nombre</label><input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
-                  <label>Teléfono</label><input value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} />
-                  <label>Email</label><input value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
+                  <label>Nombre *</label><input required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
+                  <label>Teléfono *</label><input required value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} />
+                  <label>Email *</label><input required type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
                   <label>Dirección (opcional)</label><input value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} />
                 </>
               )}
               {current.id === "fecha" && (
                 <>
-                  <label>Fecha de entrega (predeterminada: mañana)</label>
+                  <label>Fecha de entrega (predeterminada: mañana) *</label>
                   <input type="date" min={tomorrowISO()} value={form.deliveryDate} onChange={(e) => setForm({ ...form, deliveryDate: e.target.value })} />
                 </>
               )}
               {current.id === "hora" && (
                 <>
-                  <label>Hora de entrega</label>
+                  <label>Hora de entrega *</label>
                   <input type="time" value={form.deliveryTime} onChange={(e) => setForm({ ...form, deliveryTime: e.target.value })} />
                 </>
               )}
@@ -189,7 +209,7 @@ export default function PedidoPage() {
                   <Options category="delivery" field="deliveryType" />
                   {form.deliveryType?.toLowerCase().includes("env") ? (
                     <>
-                      <label>Dirección detallada de envío</label>
+                      <label>Dirección detallada de envío *</label>
                       <textarea rows={3} value={form.deliveryAddress} onChange={(e) => setForm({ ...form, deliveryAddress: e.target.value })} />
                     </>
                   ) : <p className="note">Si eliges recogida, pasa al siguiente paso.</p>}
@@ -198,10 +218,15 @@ export default function PedidoPage() {
               {current.id === "size" && <Options category="size" field="size" />}
               {current.id === "sabor" && <Options category="cake_flavor" field="cakeFlavor" />}
               {current.id === "relleno" && <Options category="filling" field="fillingFlavor" />}
-              {current.id === "capas" && <Options category="filling_count" field="fillingCount" />}
+              {current.id === "capas" && (
+                <>
+                  <p className="note">Elige cuántas capas de relleno lleva tu kake. Cada foto muestra 2 o 3 rellenos.</p>
+                  <Options category="filling_count" field="fillingCount" />
+                </>
+              )}
               {current.id === "diseno" && (
                 <>
-                  <p className="note">Elige un diseño de la galería, descríbelo o sube una foto. Inspiración: <a href={IMAGES.instagram} target="_blank">Instagram</a></p>
+                  <p className="note">Elige un diseño, descríbelo o sube una foto. Inspiración: <a href={IMAGES.instagram} target="_blank">Instagram</a></p>
                   <Options extra={(catalog.designs || []).map((d) => ({ ...d, image: d.image || d.image_url }))} field="designLabel" />
                   <label>Describe cómo quieres tu kake</label>
                   <textarea rows={4} placeholder="Colores, frase, personaje, flores, número de velas..." value={form.designNotes} onChange={(e) => setForm({ ...form, designNotes: e.target.value })} />
@@ -214,27 +239,41 @@ export default function PedidoPage() {
               )}
               {current.id === "resumen" && (
                 <div>
-                  <p>Revisa cada opción antes de realizar el pedido.</p>
-                  <table className="table">
-                    <tbody>
-                      {rows.map(([k, v]) => (
-                        <tr key={k}><th>{k}</th><td>{String(v || "—")}</td></tr>
-                      ))}
-                    </tbody>
-                  </table>
-                  {previewImg && <img src={previewImg} alt="Diseño" style={{ maxWidth: "240px", margin: "12px 0", borderRadius: 16 }} />}
-                  <button className="btn" disabled={saving || status.includes("confirmado")} onClick={submit}>
-                    {saving ? "Enviando..." : "Confirmar opciones y realizar pedido"}
-                  </button>
+                  <div id="ticket" className="ticket">
+                    <h2>Karla's Bake</h2>
+                    <p className="ticket-no">{orderNumber || "Pedido pendiente de confirmar"}</p>
+                    <p>Ticket de pedido</p>
+                    <table className="table">
+                      <tbody>
+                        {rows.map(([k, v]) => (
+                          <tr key={k}><th>{k}</th><td>{String(v || "—")}</td></tr>
+                        ))}
+                      </tbody>
+                    </table>
+                    {previewImg && <img src={previewImg} alt="Diseño" style={{ maxWidth: "240px", margin: "12px 0", borderRadius: 16 }} />}
+                  </div>
+                  {!orderNumber && (
+                    <button className="btn no-print" disabled={saving} onClick={submit}>
+                      {saving ? "Enviando..." : "Confirmar opciones y realizar pedido"}
+                    </button>
+                  )}
+                  {orderNumber && (
+                    <div className="row no-print">
+                      <button className="btn" onClick={printTicket}>Descargar / imprimir pedido</button>
+                      <button className="btn ghost" onClick={closeWizard}>Cerrar ventana</button>
+                    </div>
+                  )}
                 </div>
               )}
-              {status && <p className="note">{status}</p>}
-              <div className="row">
-                <button className="btn ghost" onClick={() => step === 0 ? setOpen(false) : setStep(step - 1)}>Atrás</button>
-                {step < STEPS.length - 1 && <button className="btn" onClick={next}>Siguiente</button>}
-              </div>
+              {status && <p className="note no-print">{status}</p>}
+              {!orderNumber && (
+                <div className="row no-print">
+                  <button className="btn ghost" onClick={() => step === 0 ? setOpen(false) : setStep(step - 1)}>Atrás</button>
+                  {step < STEPS.length - 1 && <button className="btn" onClick={next}>Siguiente</button>}
+                </div>
+              )}
             </div>
-            <aside className="preview">
+            <aside className="preview no-print">
               <img src={previewImg} alt="Vista previa" />
               <div className="total">${total.toFixed(2)}</div>
               <ul>
