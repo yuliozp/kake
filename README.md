@@ -4,11 +4,13 @@ Sitio de pedidos personalizados de pasteles.
 
 ## Variables en Vercel
 
-- `DATABASE_URL` — Neon (proyecto `kake`)
-- `ADMIN_KEY` — clave `/admin` (por defecto `kake`)
+- `DATABASE_URL` — connection string de Neon (proyecto `kake`)
+- `ADMIN_KEY` — clave del panel `/admin` (por defecto `kake`)
+
+Crea en Neon un proyecto llamado `kake` y pega la URL en Vercel.
 
 ## Rutas
 
 - `/` inicio
-- `/pedido` personalización
+- `/pedido` wizard
 - `/admin` catálogo y pedidos
