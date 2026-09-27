@@ -1,22 +1,20 @@
 import "./globals.css";
+import { LanguageProvider } from "@/components/LanguageProvider";
+import Nav from "@/components/Nav";
 
 export const metadata = {
-  title: "kake — Pasteles a tu medida",
-  description: "Pide tu kake personalizado en minutos",
+  title: "kake — custom cakes / pasteles a tu medida",
+  description: "Order your custom kake in minutes / Pide tu kake personalizado",
 };
 
 export default function RootLayout({ children }) {
   return (
     <html lang="es">
       <body>
-        <nav className="nav wrap">
-          <a className="logo" href="/">kake</a>
-          <div style={{ display: "flex", gap: 12 }}>
-            <a href="/pedido" className="btn">Pedir ahora</a>
-            <a href="/admin" className="btn ghost">Admin</a>
-          </div>
-        </nav>
-        {children}
+        <LanguageProvider>
+          <Nav />
+          {children}
+        </LanguageProvider>
       </body>
     </html>
   );
