@@ -13,6 +13,7 @@ export default function Nav() {
       <nav className="nav-links" aria-label="Principal">
         <a href="/#novedades">{t.navNews}</a>
         <a href="/#talento">{t.navTalent}</a>
+        <a href="/#resenas">{t.navReviews}</a>
         <a href="/#contacto">{t.navContact}</a>
       </nav>
       <div className="nav-actions">

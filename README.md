@@ -26,9 +26,16 @@ Sitio de pedidos de pasteles personalizados — Next.js 16 en Vercel + Postgres 
 | `RESEND_FROM` | Recomendada | Remitente, p. ej. `Karla's Bake <pedidos@tudominio.com>` (dominio verificado en Resend). |
 | `ORDER_NOTIFY_EMAIL` | Recomendada | A quién llega el aviso de cada pedido. |
 | `RESEND_OWNER_EMAIL` | Opcional | Copia de respaldo si el envío principal falla. |
+| `GOOGLE_PLACES_API_KEY` | Recomendada | Calificación y reseñas de Google en el inicio (se refrescan cada 24 h). Sin ella la sección muestra solo los botones. |
 
 > Mientras `RESEND_FROM` use `onboarding@resend.dev`, Resend solo entrega al correo dueño de la cuenta.
 > Para que los avisos lleguen a otra dirección hay que verificar un dominio en Resend.
+
+## Reseñas de Google
+
+La ficha de Google Maps es `ChIJbQllM2SxPoYRw2PJ7Cj3bl8` (`lib/google.js`). El inicio muestra la calificación,
+el total de reseñas y hasta 5 reseñas de clientes, con botones para escribir una reseña y verlas todas en Google,
+más el mapa incrustado en Contáctenos. La página se regenera una vez al día (`revalidate = 86400`).
 
 ## Pedidos: estados y cobro
 
