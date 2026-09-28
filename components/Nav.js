@@ -8,16 +8,16 @@ export default function Nav() {
     <nav className="nav wrap">
       <Logo />
       <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-        <a className="note" href="/#inicio">Home</a>
-        <a className="note" href="/#novedades">Novedades</a>
-        <a className="note" href="/#talento">Nuestro talento</a>
-        <a className="note" href="/#contacto">Contactenos</a>
+        <a className="note" href="/#inicio">{t.navHome}</a>
+        <a className="note" href="/#novedades">{t.navNews}</a>
+        <a className="note" href="/#talento">{t.navTalent}</a>
+        <a className="note" href="/#contacto">{t.navContact}</a>
         <div className="lang-switch" role="group">
           <button className={lang === "es" ? "on" : ""} onClick={() => setLang("es")}>ES</button>
           <button className={lang === "en" ? "on" : ""} onClick={() => setLang("en")}>EN</button>
         </div>
-        <a href="/pedido" className="btn">{t.orderNow || "Pedir"}</a>
-        <a href="/admin" className="btn ghost" target="_blank" rel="noreferrer">{t.admin || "Admin"}</a>
+        <a href="/pedido" className="btn">{t.orderNow}</a>
+        <a href="/admin" className="btn ghost" target="_blank" rel="noreferrer">{t.admin}</a>
       </div>
     </nav>
   );
