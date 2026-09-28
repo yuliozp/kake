@@ -58,7 +58,6 @@ export default function AdminPage() {
     });
     const json = await res.json();
     if (!res.ok) throw new Error(json.error || "Error");
-    return json;
   }
 
   async function onOptFile(e) {
@@ -83,7 +82,7 @@ export default function AdminPage() {
   async function saveDesign(e) {
     e.preventDefault();
     if (!design.label.trim()) return setMsg("Nombre del diseno obligatorio");
-    await postOption({ type: "design", ...design });
+    await postOption(design.id ? { type: "design_update", ...design } : { type: "design", ...design });
     setDesign({ id: null, label: "", image_url: "", price: 0, active: true });
     load();
   }
@@ -106,7 +105,7 @@ export default function AdminPage() {
       <div className="card">
         <Logo />
         <h2>Admin Karla's Bake</h2>
-        <p className="note">Esta ventana es solo para el taller. Clave: kake</p>
+        <p className="note">Ventana aparte del pedido. Clave: kake</p>
         <input value={key} onChange={(e) => setKey(e.target.value)} placeholder="Clave" />
         <button className="btn" style={{ marginTop: 12 }} onClick={load}>Entrar</button>
         {msg && <p>{msg}</p>}
@@ -143,7 +142,7 @@ export default function AdminPage() {
             <input required placeholder="Nombre" value={opt.label} onChange={(e) => setOpt({ ...opt, label: e.target.value })} />
             <input placeholder="Descripcion" value={opt.description} onChange={(e) => setOpt({ ...opt, description: e.target.value })} />
             <input type="number" step="0.01" value={opt.price} onChange={(e) => setOpt({ ...opt, price: Number(e.target.value) })} />
-            <label>Foto</label>
+            <label>Foto (desde galeria)</label>
             <input type="file" accept="image/*" onChange={onOptFile} />
             {opt.image_url ? <img src={opt.image_url} alt="" style={{ maxWidth: 140, borderRadius: 12 }} /> : null}
             <button className="btn">Guardar</button>
@@ -158,7 +157,7 @@ export default function AdminPage() {
             <input type="number" step="0.01" value={design.price} onChange={(e) => setDesign({ ...design, price: Number(e.target.value) })} />
             <input type="file" accept="image/*" onChange={onDesignFile} />
             {design.image_url ? <img src={design.image_url} alt="" style={{ maxWidth: 140, borderRadius: 12 }} /> : null}
-            <button className="btn">{design.id ? "Guardar diseno" : "Agregar diseno"}</button>
+            <button className="btn">{design.id ? "Guardar cambios del diseno" : "Agregar diseno"}</button>
           </form>
           <div className="grid" style={{ marginTop: 12 }}>
             {(data.designs || []).map((d) => (
@@ -166,7 +165,7 @@ export default function AdminPage() {
                 <img src={d.image_url || d.image} alt={d.label} />
                 <div className="meta">
                   <strong>{d.label}</strong>
-                  <button className="btn ghost" type="button" onClick={() => setDesign({ id: d.id, label: d.label, image_url: d.image_url || d.image, price: Number(d.price || 0), active: d.active !== false })}>Editar</button>
+                  <button className="btn ghost" type="button" onClick={() => setDesign({ id: d.id, label: d.label, image_url: d.image_url || d.image || "", price: Number(d.price || 0), active: d.active !== false })}>Editar</button>
                 </div>
               </div>
             ))}
