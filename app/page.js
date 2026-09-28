@@ -2,6 +2,21 @@
 import { IMAGES } from "@/lib/defaults";
 import Logo from "@/components/Logo";
 import { useI18n } from "@/components/LanguageProvider";
+import { NEWS, TALENT } from "@/lib/gallery";
+import { PhoneIcon, SmsIcon, WhatsAppIcon } from "@/components/Icons";
+
+function Gallery({ items, lang }) {
+  return (
+    <div className={"gallery n" + items.length}>
+      {items.map((it) => (
+        <figure key={it.src} className="shot">
+          <img src={it.src} alt={it[lang]} loading="lazy" />
+          <figcaption>{it[lang]}</figcaption>
+        </figure>
+      ))}
+    </div>
+  );
+}
 
 const MAP = "https://www.google.com/maps/search/?api=1&query=3920+Highway+365+Apt+247+Building+17+Port+Arthur+Texas+77642";
 const WA = "https://wa.me/14093325768";
@@ -9,7 +24,7 @@ const SMS = "sms:+14093325768";
 const CALL = "tel:+14093325768";
 
 export default function Home() {
-  const { t } = useI18n();
+  const { t, lang } = useI18n();
   return (
     <main className="wrap promo">
       <section id="inicio" className="hero">
@@ -29,12 +44,14 @@ export default function Home() {
       <section id="novedades" className="card" style={{ marginTop: 24 }}>
         <h2>{t.newsTitle}</h2>
         <p>{t.newsBody}</p>
+        <Gallery items={NEWS} lang={lang} />
         <p className="note">{t.newsNote}</p>
       </section>
 
       <section id="talento" className="card" style={{ marginTop: 16 }}>
         <h2>{t.talentTitle}</h2>
         <p>{t.talentBody}</p>
+        <Gallery items={TALENT} lang={lang} />
         <p className="note">{t.talentNote}</p>
       </section>
 
@@ -44,10 +61,10 @@ export default function Home() {
           <a href={MAP} target="_blank" rel="noreferrer">3920 Highway 365 Apt 247 Building 17, Port Arthur, Texas, 77642</a>
         </p>
         <p>Cell: <a href={CALL}>+1 (409) 332-5768</a></p>
-        <div className="row">
-          <a className="btn" href={CALL}>{t.call}</a>
-          <a className="btn ghost" href={SMS}>{t.sms}</a>
-          <a className="btn ghost" href={WA} target="_blank" rel="noreferrer">{t.whatsapp}</a>
+        <div className="contact-row">
+          <a className="btn contact call" href={CALL}><PhoneIcon />{t.call}</a>
+          <a className="btn contact sms" href={SMS}><SmsIcon />{t.sms}</a>
+          <a className="btn contact wa" href={WA} target="_blank" rel="noreferrer"><WhatsAppIcon />{t.whatsapp}</a>
         </div>
         <p>Email: <a href="mailto:karlagabyzorrilla@gmail.com">karlagabyzorrilla@gmail.com</a></p>
         <p>

@@ -174,3 +174,31 @@ tr.detail td { background: #fff8fb; }
 @media (prefers-reduced-motion: reduce) {
   * { transition: none !important; scroll-behavior: auto !important; }
 }
+
+/* Galería */
+.gallery { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 16px; margin: 18px 0 8px; }
+.shot { margin: 0; background: #fff8fb; border-radius: 20px; overflow: hidden; border: 1px solid #ffe0ea; display: flex; flex-direction: column; }
+.shot img { width: 100%; aspect-ratio: 4 / 5; object-fit: cover; display: block; transition: transform .3s; }
+.shot:hover img { transform: scale(1.03); }
+.shot figcaption { padding: 12px 14px 14px; font-weight: 700; font-size: 14px; line-height: 1.4; }
+
+/* Botones de contacto con icono */
+.contact-row { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 16px; }
+.btn.contact { gap: 8px; box-shadow: none; }
+.btn.contact.call { background: var(--pink); }
+.btn.contact.call:hover { background: var(--pink-dark); }
+.btn.contact.sms { background: #2f80ed; }
+.btn.contact.sms:hover { background: #1f6fd6; }
+.btn.contact.wa { background: #25d366; }
+.btn.contact.wa:hover { background: #1ebe5a; }
+@media (max-width: 800px) {
+  .gallery { grid-template-columns: repeat(2, 1fr); gap: 10px; }
+  .shot figcaption { font-size: 12.5px; padding: 8px 10px 10px; }
+  .contact-row .btn { flex: 1 1 100%; }
+}
+@media (min-width: 801px) {
+  .gallery.n4 { grid-template-columns: repeat(4, 1fr); }
+  .gallery.n5 { grid-template-columns: repeat(5, 1fr); gap: 12px; }
+  .gallery.n5 figcaption { font-size: 13px; }
+}
+.hero img { object-position: center 70%; }
