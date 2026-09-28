@@ -7,7 +7,7 @@ import Footer from "@/components/Footer";
 const nunito = Nunito({ subsets: ["latin"], weight: ["400", "600", "700", "800", "900"], display: "swap" });
 
 export const metadata = {
-  metadataBase: new URL("https://kake-five.vercel.app"),
+  metadataBase: new URL("https://karlasbake.com"),
   title: {
     default: "Karla's Bake — Pasteles personalizados en Port Arthur, TX",
     template: "%s · Karla's Bake",
