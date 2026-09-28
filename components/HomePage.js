@@ -77,7 +77,7 @@ export default function HomePage({ google }) {
               <a className="btn contact sms" href={SMS}><SmsIcon />{t.sms}</a>
               <a className="btn contact wa" href={WA} target="_blank" rel="noreferrer"><WhatsAppIcon />{t.whatsapp}</a>
             </div>
-            <p>Email: <a href="mailto:karlagabyzorrilla@gmail.com">karlagabyzorrilla@gmail.com</a></p>
+            <p>Email: <a href="mailto:karlasbake25@gmail.com">karlasbake25@gmail.com</a></p>
             <p>
               <a href="https://www.facebook.com/karla.sbake" target="_blank" rel="noreferrer">Facebook</a>
               {" · "}
