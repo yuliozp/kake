@@ -1,35 +1,38 @@
 import { NextResponse } from "next/server";
-import { addDesign, deleteDesign, getFullCatalog, updateDesign, upsertModel, upsertOption } from "@/lib/db";
+import {
+  addDesign, deleteDesign, deleteOption, getFullCatalog, setCategoryActive, updateDesign, upsertOption,
+} from "@/lib/db";
+import { isAdmin } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 
-function authorized(req) {
-  const key = process.env.ADMIN_KEY || "kake";
-  const header = req.headers.get("x-admin-key") || "";
-  return header === key;
-}
+const unauthorized = () => NextResponse.json({ error: "Clave incorrecta" }, { status: 401 });
 
 export async function GET(req) {
-  if (!authorized(req)) return NextResponse.json({ error: "No autorizado" }, { status: 401 });
+  if (!isAdmin(req)) return unauthorized();
   try {
-    const data = await getFullCatalog();
-    return NextResponse.json(data);
+    return NextResponse.json(await getFullCatalog());
   } catch (e) {
-    return NextResponse.json({ error: String(e.message || e) }, { status: 500 });
+    console.error("[admin:get]", e);
+    return NextResponse.json({ error: "No se pudo cargar el catálogo" }, { status: 500 });
   }
 }
 
 export async function POST(req) {
-  if (!authorized(req)) return NextResponse.json({ error: "No autorizado" }, { status: 401 });
+  if (!isAdmin(req)) return unauthorized();
   try {
     const body = await req.json();
-    if (body.type === "design") await addDesign(body);
-    else if (body.type === "design_update") await updateDesign(body);
-    else if (body.type === "design_delete") await deleteDesign(body.id);
-    else if (body.type === "model") await upsertModel(body);
-    else await upsertOption(body);
+    switch (body.type) {
+      case "design": await addDesign(body); break;
+      case "design_update": await updateDesign(body); break;
+      case "design_delete": await deleteDesign(body.id); break;
+      case "option_delete": await deleteOption(body.id); break;
+      case "category_active": await setCategoryActive(body.category, !!body.active); break;
+      default: await upsertOption(body);
+    }
     return NextResponse.json({ ok: true });
   } catch (e) {
-    return NextResponse.json({ error: String(e.message || e) }, { status: 500 });
+    console.error("[admin:post]", e);
+    return NextResponse.json({ error: String(e?.message || "Error al guardar") }, { status: 500 });
   }
 }

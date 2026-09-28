@@ -4,32 +4,74 @@ import { defaultCatalog, IMAGES } from "@/lib/defaults";
 import Logo from "@/components/Logo";
 import { useI18n } from "@/components/LanguageProvider";
 import { translateLabel } from "@/lib/i18n";
+import { fileToDataUrl } from "@/lib/image";
 
-function tomorrowISO() {
+// Fecha local (no UTC): evita que de noche "mañana" salga como pasado mañana.
+function localISO(offsetDays = 0) {
   const d = new Date();
-  d.setDate(d.getDate() + 1);
-  return d.toISOString().slice(0, 10);
+  d.setDate(d.getDate() + offsetDays);
+  const p = (n) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
 }
+
+function prettyDate(iso, lang) {
+  if (!iso) return "—";
+  const [y, m, d] = iso.split("-").map(Number);
+  return new Date(y, m - 1, d).toLocaleDateString(lang === "en" ? "en-US" : "es-US", { weekday: "long", day: "numeric", month: "long" });
+}
+function prettyTime(hhmm, lang) {
+  if (!hhmm) return "";
+  const [h, m] = hhmm.split(":").map(Number);
+  return new Date(2000, 0, 1, h, m).toLocaleTimeString(lang === "en" ? "en-US" : "es-US", { hour: "numeric", minute: "2-digit" });
+}
+
+const isShipping =(label) => /env[ií]o|domicilio|delivery/i.test(label || "");
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const money = (n) => "$" + Number(n || 0).toFixed(2);
+
+function OptionGrid({ items, selected, onPick, L }) {
+  const { t } = useI18n();
+  return (
+    <div className="grid" role="radiogroup">
+      {items.map((o) => {
+        const isOn = selected === o.label;
+        const img = o.image || o.image_url;
+        return (
+          <button type="button" role="radio" aria-checked={isOn} key={o.id || o.label}
+            className={"opt" + (isOn ? " selected" : "")} onClick={() => onPick(o)}>
+            {img && <img src={img} alt="" loading="lazy" />}
+            <span className="meta">
+              <strong>{L(o.label)}</strong>
+              <span className="price">{Number(o.price) > 0 ? "+ " + money(o.price) : t.included}</span>
+            </span>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+const EMPTY = {
+  name: "", phone: "", email: "", address: "", smsOptIn: false,
+  deliveryDate: localISO(1), deliveryTime: "15:00",
+  deliveryType: "", deliveryAddress: "",
+  size: "", cakeFlavor: "", fillingFlavor: "", fillingCount: "",
+  designId: null, designLabel: "", designImage: "", designPrice: 0, uploadPreview: "", designNotes: "",
+};
 
 export default function PedidoPage() {
   const { lang, t } = useI18n();
   const [catalog, setCatalog] = useState(defaultCatalog);
   const [step, setStep] = useState(0);
-  const [open, setOpen] = useState(true);
   const [status, setStatus] = useState("");
   const [saving, setSaving] = useState(false);
-  const [orderNumber, setOrderNumber] = useState("");
-  const [form, setForm] = useState({
-    name: "", phone: "", email: "", address: "", smsOptIn: false,
-    deliveryDate: tomorrowISO(), deliveryTime: "15:00",
-    deliveryType: "", deliveryAddress: "",
-    size: "", cakeFlavor: "", fillingFlavor: "", fillingCount: "",
-    designLabel: "", designImage: "", designPrice: 0, uploadPreview: "", designNotes: "",
-  });
+  const [done, setDone] = useState(null);
+  const [form, setForm] = useState(EMPTY);
+  const set = (patch) => setForm((f) => ({ ...f, ...patch }));
 
   useEffect(() => {
     fetch("/api/catalog").then((r) => r.json()).then((d) => {
-      if (d.options) setCatalog({ options: d.options, designs: d.designs || [] });
+      if (Array.isArray(d.options)) setCatalog({ options: d.options, designs: d.designs || [] });
     }).catch(() => {});
   }, []);
 
@@ -39,9 +81,7 @@ export default function PedidoPage() {
   const L = (label) => translateLabel(lang, label);
 
   const STEPS = useMemo(() => {
-    const s = [
-      { id: "cliente" }, { id: "fecha" }, { id: "hora" },
-    ];
+    const s = [{ id: "cliente" }, { id: "fecha" }, { id: "hora" }];
     if (has("delivery")) s.push({ id: "envio" });
     if (has("size")) s.push({ id: "size" });
     if (has("cake_flavor")) s.push({ id: "sabor" });
@@ -49,6 +89,7 @@ export default function PedidoPage() {
     if (has("filling_count")) s.push({ id: "capas" });
     s.push({ id: "diseno" }, { id: "resumen" });
     return s;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [catalog]);
 
   const total = useMemo(() => {
@@ -61,136 +102,231 @@ export default function PedidoPage() {
     add("delivery", form.deliveryType);
     n += Number(form.designPrice || 0);
     return n;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [form, catalog]);
 
-  const previewImg = form.designImage || form.uploadPreview || find("size", form.size)?.image || IMAGES.hero;
-  const current = STEPS[step] || STEPS[0];
+  const previewImg = form.uploadPreview || form.designImage || find("size", form.size)?.image || IMAGES.hero;
+  const current = STEPS[Math.min(step, STEPS.length - 1)];
+  const goTo = (id) => { setStatus(""); setStep(Math.max(0, STEPS.findIndex((s) => s.id === id))); };
+
+  function validate(id) {
+    if (id === "cliente") {
+      if (!form.name.trim() || !form.phone.trim() || !form.email.trim()) return t.needClient;
+      if (!EMAIL_RE.test(form.email.trim())) return t.badEmail;
+    }
+    if (id === "fecha" && !form.deliveryDate) return t.needDate;
+    if (id === "envio") {
+      if (!form.deliveryType) return t.needDelivery;
+      if (isShipping(form.deliveryType) && !(form.deliveryAddress || form.address).trim()) return t.needAddress;
+    }
+    if (id === "size" && !form.size) return t.needSize;
+    if (id === "sabor" && !form.cakeFlavor) return t.needFlavor;
+    if (id === "relleno" && !form.fillingFlavor) return t.needFilling;
+    if (id === "diseno" && !form.designLabel && !form.designNotes.trim() && !form.uploadPreview) return t.needDesign;
+    return "";
+  }
 
   function next() {
-    if (current.id === "cliente" && (!form.name || !form.phone || !form.email)) return setStatus(t.needClient);
-    if (current.id === "size" && !form.size) return setStatus(t.needSize);
-    if (current.id === "sabor" && !form.cakeFlavor) return setStatus(t.needFlavor);
-    if (current.id === "relleno" && !form.fillingFlavor) return setStatus(t.needFilling);
-    if (current.id === "diseno" && !form.designLabel && !form.designNotes && !form.uploadPreview) return setStatus(t.needDesign);
+    const err = validate(current.id);
+    if (err) return setStatus(err);
     setStatus("");
     setStep((s) => Math.min(s + 1, STEPS.length - 1));
   }
 
-  function onUpload(e) {
+  function back() {
+    setStatus("");
+    if (step === 0) window.location.href = "/";
+    else setStep(step - 1);
+  }
+
+  async function onUpload(e) {
     const file = e.target.files?.[0];
+    e.target.value = "";
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () => setForm((f) => ({ ...f, uploadPreview: reader.result, designImage: reader.result, designLabel: f.designLabel || t.ownDesign }));
-    reader.readAsDataURL(file);
+    try {
+      const url = await fileToDataUrl(file);
+      set({ uploadPreview: url });
+      setStatus("");
+    } catch {
+      setStatus(t.badPhoto);
+    }
   }
 
   async function submit() {
+    for (const s of STEPS) {
+      const err = validate(s.id);
+      if (err) { goTo(s.id); return setStatus(err); }
+    }
     setSaving(true);
-    const res = await fetch("/api/orders", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        customer: { name: form.name, phone: form.phone, email: form.email, address: form.address, smsOptIn: form.smsOptIn },
-        deliveryType: form.deliveryType,
-        deliveryAddress: form.deliveryAddress || form.address || "",
-        deliveryDate: form.deliveryDate, deliveryTime: form.deliveryTime,
-        size: form.size, cakeFlavor: form.cakeFlavor, fillingFlavor: form.fillingFlavor,
-        fillingCount: form.fillingCount?.startsWith("3") ? 3 : 2,
-        designLabel: form.designLabel || t.ownDesign,
-        designImage: form.designImage || form.uploadPreview,
-        selections: form, total,
-      }),
-    });
-    const data = await res.json();
-    setSaving(false);
-    if (!res.ok) return setStatus(data.error || "Error");
-    setOrderNumber(data.orderNumber);
-    setStatus(t.saved + " " + data.orderNumber);
+    setStatus("");
+    try {
+      const res = await fetch("/api/orders", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          lang,
+          customer: { name: form.name, phone: form.phone, email: form.email, address: form.address, smsOptIn: form.smsOptIn },
+          deliveryType: form.deliveryType,
+          deliveryAddress: isShipping(form.deliveryType) ? form.deliveryAddress || form.address : "",
+          deliveryDate: form.deliveryDate, deliveryTime: form.deliveryTime,
+          size: form.size, cakeFlavor: form.cakeFlavor, fillingFlavor: form.fillingFlavor, fillingCount: form.fillingCount,
+          designId: form.designId,
+          designLabel: form.designLabel || (form.uploadPreview || form.designNotes ? t.ownDesign : ""),
+          designNotes: form.designNotes,
+          designImage: form.uploadPreview,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || t.errorGeneric);
+      setDone({ orderNumber: data.orderNumber, total: data.total ?? total });
+    } catch (err) {
+      setStatus(err.message || t.errorGeneric);
+    } finally {
+      setSaving(false);
+    }
   }
 
-  function Options({ category, field, extra }) {
-    const items = extra || by(category);
+  const summary = [
+    ["cliente", t.customer, `${form.name} · ${form.phone} · ${form.email}`],
+    ["fecha", t.when, `${prettyDate(form.deliveryDate, lang)} · ${prettyTime(form.deliveryTime, lang)}`],
+    has("delivery") && ["envio", t.mode, L(form.deliveryType)],
+    has("delivery") && isShipping(form.deliveryType) && ["envio", t.address, form.deliveryAddress || form.address],
+    has("size") && ["size", t.steps.size, L(form.size)],
+    has("cake_flavor") && ["sabor", t.steps.sabor, L(form.cakeFlavor)],
+    has("filling") && ["relleno", t.steps.relleno, L(form.fillingFlavor)],
+    has("filling_count") && ["capas", t.steps.capas, L(form.fillingCount)],
+    ["diseno", t.steps.diseno, form.designLabel || (form.uploadPreview ? t.ownDesign : t.noDesign)],
+    form.designNotes && ["diseno", t.notes, form.designNotes],
+    ["cliente", t.promotions, form.smsOptIn ? t.smsYes : t.smsNo],
+  ].filter(Boolean);
+
+  if (done) {
     return (
-      <div className="grid">
-        {items.map((o) => {
-          const selected = form[field] === o.label;
-          return (
-            <div key={o.id || o.label} className={"opt" + (selected ? " selected" : "")}
-              onClick={() => setForm((f) => ({ ...f, [field]: o.label, ...(field === "designLabel" ? { designImage: o.image || o.image_url, designPrice: o.price } : {}) }))}>
-              {(o.image || o.image_url) && <img src={o.image || o.image_url} alt={L(o.label)} />}
-              <div className="meta"><strong>{L(o.label)}</strong><div className="price">+ ${Number(o.price || 0).toFixed(2)}</div></div>
-            </div>
-          );
-        })}
-      </div>
+      <main className="wrap narrow">
+        <div className="card done">
+          <Logo size={72} />
+          <h1 className="done-title">{t.doneTitle}</h1>
+          <p className="note">{t.orderNo}</p>
+          <p className="ticket-no">{done.orderNumber}</p>
+          <p className="total">{t.total}: {money(done.total)}</p>
+          <p>{t.doneBody}</p>
+          <div className="row center">
+            <a className="btn" href="/">{t.backHome}</a>
+            <button className="btn ghost" onClick={() => { setForm(EMPTY); setStep(0); setDone(null); }}>{t.newOrder}</button>
+          </div>
+        </div>
+      </main>
     );
   }
 
+  const progress = Math.round(((step + 1) / STEPS.length) * 100);
+
   return (
     <main className="wrap">
-      <div className="card no-print"><Logo /><h2>{t.wizardTitle}</h2></div>
-      {open && (
-        <div className="modal-bg">
-          <div className="modal">
-            <div>
-              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                <Logo size={48} />
-                <div>
-                  <p className="note no-print">{t.stepOf} {step + 1} {t.of} {STEPS.length}</p>
-                  <h2 className="no-print" style={{ margin: 0 }}>{t.steps[current.id]}</h2>
-                </div>
+      <div className="modal-bg">
+        <div className="modal">
+          <div className="modal-main">
+            <div className="modal-head">
+              <Logo size={48} />
+              <div style={{ flex: 1 }}>
+                <p className="note">{t.stepOf} {step + 1} {t.of} {STEPS.length}</p>
+                <h2 style={{ margin: 0 }}>{current.id === "resumen" ? t.summaryTitle : t.steps[current.id]}</h2>
+                <div className="progress" aria-hidden="true"><span style={{ width: progress + "%" }} /></div>
               </div>
-              {current.id === "cliente" && (
-                <>
-                  <label>{t.name} *</label><input required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
-                  <label>{t.phone} *</label><input required value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} />
-                  <label>{t.email} *</label><input required type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
-                  <label>{t.addressOptional}</label><input value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} />
-                  <label style={{ display: "flex", gap: 8, alignItems: "center", fontWeight: 600 }}>
-                    <input type="checkbox" style={{ width: "auto" }} checked={form.smsOptIn} onChange={(e) => setForm({ ...form, smsOptIn: e.target.checked })} />
-                    {t.smsOpt}
-                  </label>
-                </>
-              )}
-              {current.id === "fecha" && <input type="date" min={tomorrowISO()} value={form.deliveryDate} onChange={(e) => setForm({ ...form, deliveryDate: e.target.value })} />}
-              {current.id === "hora" && <input type="time" value={form.deliveryTime} onChange={(e) => setForm({ ...form, deliveryTime: e.target.value })} />}
-              {current.id === "envio" && <Options category="delivery" field="deliveryType" />}
-              {current.id === "size" && <Options category="size" field="size" />}
-              {current.id === "sabor" && <Options category="cake_flavor" field="cakeFlavor" />}
-              {current.id === "relleno" && <Options category="filling" field="fillingFlavor" />}
-              {current.id === "capas" && <Options category="filling_count" field="fillingCount" />}
-              {current.id === "diseno" && (
-                <>
-                  <p className="note">{t.designHint}</p>
-                  <Options extra={(catalog.designs || []).map((d) => ({ ...d, image: d.image || d.image_url }))} field="designLabel" />
-                  <label>{t.uploadPhoto}</label>
-                  <input type="file" accept="image/*" onChange={onUpload} />
-                  {form.uploadPreview && <img src={form.uploadPreview} alt="" style={{ maxWidth: 220, borderRadius: 16 }} />}
-                  <textarea rows={3} placeholder={t.describe} value={form.designNotes} onChange={(e) => setForm({ ...form, designNotes: e.target.value })} />
-                </>
-              )}
-              {current.id === "resumen" && (
-                <div>
-                  <p>{t.promotions}: {form.smsOptIn ? t.smsYes : t.smsNo}</p>
-                  {!orderNumber && <button className="btn" disabled={saving} onClick={submit}>{saving ? t.saving : t.confirm}</button>}
-                  {orderNumber && <p>{t.saved} {orderNumber}</p>}
-                </div>
-              )}
-              {status && <p className="note">{status}</p>}
-              {!orderNumber && (
-                <div className="row">
-                  <button className="btn ghost" onClick={() => step === 0 ? setOpen(false) : setStep(step - 1)}>{t.back}</button>
-                  {step < STEPS.length - 1 && <button className="btn" onClick={next}>{t.next}</button>}
-                </div>
-              )}
             </div>
-            <aside className="preview no-print">
-              <img src={previewImg} alt="" />
-              <div className="total">${total.toFixed(2)}</div>
-            </aside>
+
+            {current.id === "cliente" && (
+              <>
+                <label htmlFor="f-name">{t.name} *</label>
+                <input id="f-name" autoComplete="name" value={form.name} onChange={(e) => set({ name: e.target.value })} />
+                <label htmlFor="f-phone">{t.phone} *</label>
+                <input id="f-phone" type="tel" autoComplete="tel" inputMode="tel" value={form.phone} onChange={(e) => set({ phone: e.target.value })} />
+                <label htmlFor="f-email">{t.email} *</label>
+                <input id="f-email" type="email" autoComplete="email" value={form.email} onChange={(e) => set({ email: e.target.value })} />
+                <label htmlFor="f-addr">{t.addressOptional}</label>
+                <input id="f-addr" autoComplete="street-address" value={form.address} onChange={(e) => set({ address: e.target.value })} />
+                <label className="check">
+                  <input type="checkbox" checked={form.smsOptIn} onChange={(e) => set({ smsOptIn: e.target.checked })} />
+                  {t.smsOpt}
+                </label>
+              </>
+            )}
+            {current.id === "fecha" && (
+              <input type="date" aria-label={t.steps.fecha} min={localISO(1)} value={form.deliveryDate} onChange={(e) => set({ deliveryDate: e.target.value })} />
+            )}
+            {current.id === "hora" && (
+              <input type="time" aria-label={t.steps.hora} step={900} value={form.deliveryTime} onChange={(e) => set({ deliveryTime: e.target.value })} />
+            )}
+            {current.id === "envio" && (
+              <>
+                <OptionGrid items={by("delivery")} selected={form.deliveryType} L={L} onPick={(o) => set({ deliveryType: o.label })} />
+                {isShipping(form.deliveryType) && (
+                  <>
+                    <label htmlFor="f-ship">{t.shipAddress} *</label>
+                    <input id="f-ship" autoComplete="street-address" value={form.deliveryAddress || form.address}
+                      onChange={(e) => set({ deliveryAddress: e.target.value })} />
+                  </>
+                )}
+              </>
+            )}
+            {current.id === "size" && <OptionGrid items={by("size")} selected={form.size} L={L} onPick={(o) => set({ size: o.label })} />}
+            {current.id === "sabor" && <OptionGrid items={by("cake_flavor")} selected={form.cakeFlavor} L={L} onPick={(o) => set({ cakeFlavor: o.label })} />}
+            {current.id === "relleno" && <OptionGrid items={by("filling")} selected={form.fillingFlavor} L={L} onPick={(o) => set({ fillingFlavor: o.label })} />}
+            {current.id === "capas" && <OptionGrid items={by("filling_count")} selected={form.fillingCount} L={L} onPick={(o) => set({ fillingCount: o.label })} />}
+            {current.id === "diseno" && (
+              <>
+                <p className="note">{t.designHint}</p>
+                <OptionGrid
+                  items={catalog.designs || []}
+                  selected={form.designLabel}
+                  L={L}
+                  onPick={(d) => form.designId === d.id
+                    ? set({ designId: null, designLabel: "", designImage: "", designPrice: 0 })
+                    : set({ designId: d.id, designLabel: d.label, designImage: d.image || d.image_url, designPrice: Number(d.price || 0) })}
+                />
+                <label htmlFor="f-photo">{t.uploadPhoto}</label>
+                <input id="f-photo" type="file" accept="image/*" onChange={onUpload} />
+                {form.uploadPreview && (
+                  <div className="thumb">
+                    <img src={form.uploadPreview} alt="" />
+                    <button type="button" className="btn ghost small" onClick={() => set({ uploadPreview: "" })}>{t.removePhoto}</button>
+                  </div>
+                )}
+                <label htmlFor="f-notes">{t.describe}</label>
+                <textarea id="f-notes" rows={3} value={form.designNotes} onChange={(e) => set({ designNotes: e.target.value })} />
+              </>
+            )}
+            {current.id === "resumen" && (
+              <>
+                <dl className="summary">
+                  {summary.map(([id, k, v], i) => (
+                    <div key={i}>
+                      <dt>{k}</dt>
+                      <dd>{v || "—"}</dd>
+                      <button type="button" className="link" onClick={() => goTo(id)}>{t.edit}</button>
+                    </div>
+                  ))}
+                </dl>
+                <p className="note">{t.priceNote}</p>
+                <button className="btn wide" disabled={saving} onClick={submit}>
+                  {saving ? t.saving : `${t.confirm} · ${money(total)}`}
+                </button>
+              </>
+            )}
+
+            {status && <p className="alert" role="alert">{status}</p>}
+            <div className="row">
+              <button className="btn ghost" onClick={back} disabled={saving}>{t.back}</button>
+              {current.id !== "resumen" && <button className="btn" onClick={next}>{t.next}</button>}
+            </div>
           </div>
+          <aside className="preview">
+            <img src={previewImg} alt="" />
+            <p className="note" style={{ margin: "10px 0 2px" }}>{t.total}</p>
+            <div className="total">{money(total)}</div>
+          </aside>
         </div>
-      )}
+      </div>
     </main>
   );
 }

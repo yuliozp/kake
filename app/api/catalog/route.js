@@ -5,9 +5,9 @@ export const dynamic = "force-dynamic";
 
 export async function GET() {
   try {
-    const data = await getCatalog();
-    return NextResponse.json(data);
+    return NextResponse.json(await getCatalog());
   } catch (e) {
-    return NextResponse.json({ error: String(e.message || e) }, { status: 500 });
+    console.error("[catalog]", e);
+    return NextResponse.json({ error: "Catálogo no disponible" }, { status: 500 });
   }
 }

@@ -1,24 +1,27 @@
 "use client";
+import { usePathname } from "next/navigation";
 import { useI18n } from "./LanguageProvider";
 import Logo from "./Logo";
 
 export default function Nav() {
   const { lang, t, setLang } = useI18n();
+  const path = usePathname();
+  if (path?.startsWith("/admin")) return null;
   return (
-    <nav className="nav wrap">
+    <header className="nav wrap">
       <Logo />
-      <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-        <a className="note" href="/#inicio">{t.navHome}</a>
-        <a className="note" href="/#novedades">{t.navNews}</a>
-        <a className="note" href="/#talento">{t.navTalent}</a>
-        <a className="note" href="/#contacto">{t.navContact}</a>
-        <div className="lang-switch" role="group">
-          <button className={lang === "es" ? "on" : ""} onClick={() => setLang("es")}>ES</button>
-          <button className={lang === "en" ? "on" : ""} onClick={() => setLang("en")}>EN</button>
+      <nav className="nav-links" aria-label="Principal">
+        <a href="/#novedades">{t.navNews}</a>
+        <a href="/#talento">{t.navTalent}</a>
+        <a href="/#contacto">{t.navContact}</a>
+      </nav>
+      <div className="nav-actions">
+        <div className="lang-switch" role="group" aria-label="Idioma / Language">
+          <button className={lang === "es" ? "on" : ""} aria-pressed={lang === "es"} onClick={() => setLang("es")}>ES</button>
+          <button className={lang === "en" ? "on" : ""} aria-pressed={lang === "en"} onClick={() => setLang("en")}>EN</button>
         </div>
-        <a href="/pedido" className="btn">{t.orderNow}</a>
-        <a href="/admin" className="btn ghost" target="_blank" rel="noreferrer">{t.admin}</a>
+        {path !== "/pedido" && <a href="/pedido" className="btn">{t.orderNow}</a>}
       </div>
-    </nav>
+    </header>
   );
 }
