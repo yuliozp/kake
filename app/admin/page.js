@@ -1,5 +1,5 @@
 "use client";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Logo from "@/components/Logo";
 import { fileToDataUrl } from "@/lib/image";
 
@@ -10,60 +10,126 @@ const CAT = [
   ["filling_count", "Cantidad de rellenos"],
   ["delivery", "Envío / recogida"],
 ];
+const STATUS = [
+  ["nuevo", "Nuevo"],
+  ["en_preparacion", "En preparación"],
+  ["listo", "Listo"],
+  ["entregado", "Entregado"],
+  ["cancelado", "Cancelado"],
+];
+const STATUS_LABEL = Object.fromEntries(STATUS);
+const METHODS = [
+  ["efectivo", "Efectivo"],
+  ["zelle", "Zelle"],
+  ["cashapp", "Cash App"],
+  ["venmo", "Venmo"],
+  ["tarjeta", "Tarjeta"],
+  ["paypal", "PayPal"],
+  ["transferencia", "Transferencia"],
+  ["otro", "Otro"],
+];
+const METHOD_LABEL = Object.fromEntries(METHODS);
+const FILTERS = [
+  ["pendientes", "Por entregar"],
+  ["por_cobrar", "Por cobrar"],
+  ["entregados", "Entregados"],
+  ["cancelados", "Cancelados"],
+  ["todos", "Todos"],
+];
+
 const emptyOpt = { id: null, category: "size", label: "", description: "", price: 0, image_url: "", active: true };
 const emptyDesign = { id: null, label: "", image_url: "", price: 0, active: true };
 const money = (n) => "$" + Number(n || 0).toFixed(2);
-const KEY_STORE = "kake-admin-key";
 
-function fmtDate(v) {
+function localToday() {
+  const d = new Date();
+  const p = (n) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+}
+
+function fmtDate(v, opts = { weekday: "short", day: "numeric", month: "short" }) {
   if (!v) return "—";
-  const s = String(v).slice(0, 10);
-  const [y, m, d] = s.split("-").map(Number);
-  return new Date(y, m - 1, d).toLocaleDateString("es-US", { weekday: "short", day: "numeric", month: "short" });
+  const [y, m, d] = String(v).slice(0, 10).split("-").map(Number);
+  return new Date(y, m - 1, d).toLocaleDateString("es-US", opts);
+}
+
+function fmtTime(v) {
+  if (!v) return "";
+  const [h, m] = v.split(":").map(Number);
+  return new Date(2000, 0, 1, h, m).toLocaleTimeString("es-US", { hour: "numeric", minute: "2-digit" });
+}
+
+function payInfo(o) {
+  const due = Number(o.final_total ?? o.total ?? 0);
+  const paid = Number(o.paid_amount || 0);
+  const balance = Math.max(0, Math.round((due - paid) * 100) / 100);
+  const state = paid <= 0 ? "sin_pagar" : balance > 0 ? "anticipo" : "pagado";
+  const label = { sin_pagar: "Sin pagar", anticipo: "Anticipo", pagado: "Pagado" }[state];
+  return { due, paid, balance, state, label };
+}
+
+async function api(url, opts = {}) {
+  const res = await fetch(url, {
+    ...opts,
+    headers: opts.body ? { "Content-Type": "application/json" } : undefined,
+    credentials: "same-origin",
+  });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const err = new Error(json.error || "Algo salió mal. Intenta de nuevo.");
+    err.status = res.status;
+    throw err;
+  }
+  return json;
 }
 
 export default function AdminPage() {
+  const [authed, setAuthed] = useState(null); // null = verificando
   const [key, setKey] = useState("");
-  const [authed, setAuthed] = useState(false);
   const [data, setData] = useState(null);
   const [orders, setOrders] = useState([]);
   const [tab, setTab] = useState("pedidos");
   const [msg, setMsg] = useState(null);
   const [busy, setBusy] = useState(false);
-  const [opt, setOpt] = useState(emptyOpt);
-  const [design, setDesign] = useState(emptyDesign);
-  const [openOrder, setOpenOrder] = useState(null);
 
-  const flash = (text, kind = "ok") => { setMsg({ text, kind }); if (kind === "ok") setTimeout(() => setMsg(null), 2500); };
+  const flash = useCallback((text, kind = "ok") => {
+    setMsg({ text, kind, at: Date.now() });
+  }, []);
+  useEffect(() => {
+    if (msg?.kind !== "ok") return;
+    const t = setTimeout(() => setMsg(null), 2500);
+    return () => clearTimeout(t);
+  }, [msg]);
 
-  const load = useCallback(async (k) => {
-    const headers = { "x-admin-key": k };
-    const [cat, ord] = await Promise.all([
-      fetch("/api/admin", { headers }),
-      fetch("/api/orders", { headers }),
-    ]);
-    const catJson = await cat.json().catch(() => ({}));
-    if (!cat.ok) throw new Error(catJson.error || "No autorizado");
-    const ordJson = await ord.json().catch(() => ({}));
-    setData(catJson);
-    setOrders(ordJson.orders || []);
+  const onAuthError = useCallback((err) => {
+    if (err.status === 401) { setAuthed(false); flash("Tu sesión venció. Vuelve a entrar.", "error"); return true; }
+    return false;
+  }, [flash]);
+
+  const load = useCallback(async () => {
+    const [cat, ord] = await Promise.all([api("/api/admin"), api("/api/orders")]);
+    setData(cat);
+    setOrders(ord.orders || []);
   }, []);
 
   useEffect(() => {
-    const saved = sessionStorage.getItem(KEY_STORE);
-    if (!saved) return;
-    setKey(saved);
-    load(saved).then(() => setAuthed(true)).catch(() => sessionStorage.removeItem(KEY_STORE));
-  }, [load]);
+    api("/api/admin/session")
+      .then((s) => {
+        setAuthed(!!s.ok);
+        if (s.ok) load().catch((e) => onAuthError(e) || flash(e.message, "error"));
+      })
+      .catch(() => setAuthed(false));
+  }, [load, flash, onAuthError]);
 
   async function login(e) {
     e.preventDefault();
     setBusy(true);
     try {
-      await load(key);
-      sessionStorage.setItem(KEY_STORE, key);
+      await api("/api/admin/session", { method: "POST", body: JSON.stringify({ key }) });
+      setKey("");
       setAuthed(true);
       setMsg(null);
+      await load();
     } catch (err) {
       flash(err.message, "error");
     } finally {
@@ -71,58 +137,436 @@ export default function AdminPage() {
     }
   }
 
-  function logout() {
-    sessionStorage.removeItem(KEY_STORE);
-    setAuthed(false); setData(null); setOrders([]); setKey("");
+  async function logout() {
+    await api("/api/admin/session", { method: "DELETE" }).catch(() => {});
+    setAuthed(false); setData(null); setOrders([]);
   }
 
-  async function post(body, okText = "Guardado") {
+  async function refresh() {
+    try { await load(); flash("Actualizado"); } catch (e) { onAuthError(e) || flash(e.message, "error"); }
+  }
+
+  if (authed === null) {
+    return <main id="contenido" className="wrap narrow"><p className="note" role="status">Cargando…</p></main>;
+  }
+
+  if (!authed) {
+    return (
+      <main id="contenido" className="wrap narrow">
+        <form className="card" onSubmit={login}>
+          <Logo />
+          <h1 className="h2">Panel de administración</h1>
+          <p className="note">Acceso solo para el equipo de Karla&apos;s Bake.</p>
+          <label htmlFor="admin-key">Clave</label>
+          <input id="admin-key" type="password" autoComplete="current-password" autoFocus value={key} onChange={(e) => setKey(e.target.value)} />
+          <button className="btn wide" style={{ marginTop: 14 }} disabled={busy || !key}>{busy ? "Entrando…" : "Entrar"}</button>
+          {msg && <p className={msg.kind === "error" ? "alert" : "ok"} role="alert">{msg.text}</p>}
+        </form>
+      </main>
+    );
+  }
+
+  return (
+    <main id="contenido" className="wrap admin">
+      <div className="admin-bar card">
+        <Logo size={44} />
+        <div className="tabs" role="tablist" aria-label="Secciones del panel">
+          {[["pedidos", `Pedidos (${orders.length})`], ["catalogo", "Catálogo"], ["disenos", "Diseños"]].map(([id, name]) => (
+            <button key={id} role="tab" id={"tab-" + id} aria-controls={"panel-" + id} aria-selected={tab === id}
+              className={tab === id ? "on" : ""} onClick={() => setTab(id)}>{name}</button>
+          ))}
+        </div>
+        <div style={{ display: "flex", gap: 8 }}>
+          <button className="btn ghost small" onClick={refresh}>Actualizar</button>
+          <button className="btn ghost small" onClick={logout}>Salir</button>
+        </div>
+      </div>
+      <div aria-live="polite">
+        {msg && <p className={"toast " + (msg.kind === "error" ? "alert" : "ok")} role={msg.kind === "error" ? "alert" : "status"}>{msg.text}</p>}
+      </div>
+
+      <section role="tabpanel" id={"panel-" + tab} aria-labelledby={"tab-" + tab}>
+        {tab === "pedidos" && <Orders orders={orders} setOrders={setOrders} flash={flash} onAuthError={onAuthError} />}
+        {tab === "catalogo" && <Catalog data={data} load={load} flash={flash} onAuthError={onAuthError} />}
+        {tab === "disenos" && <Designs data={data} load={load} flash={flash} onAuthError={onAuthError} />}
+      </section>
+    </main>
+  );
+}
+
+/* ================= Pedidos ================= */
+
+function Orders({ orders, setOrders, flash, onAuthError }) {
+  const [filter, setFilter] = useState("pendientes");
+  const [q, setQ] = useState("");
+  const [open, setOpen] = useState(null);
+
+  const today = localToday();
+  const month = today.slice(0, 7);
+  const active = (o) => o.status !== "entregado" && o.status !== "cancelado";
+
+  const stats = useMemo(() => {
+    const pending = orders.filter(active);
+    const soon = pending.filter((o) => o.delivery_date && o.delivery_date <= addDays(today, 1));
+    const receivable = orders.filter((o) => o.status !== "cancelado").reduce((s, o) => s + payInfo(o).balance, 0);
+    const collected = orders.filter((o) => (o.paid_at || "").startsWith(month)).reduce((s, o) => s + Number(o.paid_amount || 0), 0);
+    return { pending: pending.length, soon: soon.length, receivable, collected };
+  }, [orders, today, month]);
+
+  const list = useMemo(() => {
+    const term = q.trim().toLowerCase();
+    let l = orders.filter((o) => {
+      if (filter === "pendientes") return active(o);
+      if (filter === "por_cobrar") return o.status !== "cancelado" && payInfo(o).balance > 0;
+      if (filter === "entregados") return o.status === "entregado";
+      if (filter === "cancelados") return o.status === "cancelado";
+      return true;
+    });
+    if (term) {
+      l = l.filter((o) => [o.order_number, o.customer_name, o.phone, o.email].some((v) => String(v || "").toLowerCase().includes(term)));
+    }
+    const byDelivery = (a, b) => String(a.delivery_date).localeCompare(String(b.delivery_date)) || String(a.delivery_time).localeCompare(String(b.delivery_time));
+    return filter === "pendientes" || filter === "por_cobrar" ? [...l].sort(byDelivery) : l;
+  }, [orders, filter, q]);
+
+  function patchLocal(id, fields) {
+    setOrders((os) => os.map((o) => (o.id === id ? { ...o, ...fields } : o)));
+  }
+
+  async function changeStatus(o, status) {
+    const prev = o.status;
+    patchLocal(o.id, { status });
+    try {
+      await api(`/api/orders/${o.id}`, { method: "PATCH", body: JSON.stringify({ status }) });
+      flash(`${o.order_number}: ${STATUS_LABEL[status]}`);
+    } catch (e) {
+      patchLocal(o.id, { status: prev });
+      onAuthError(e) || flash(e.message, "error");
+    }
+  }
+
+  return (
+    <div className="card" style={{ marginTop: 16 }}>
+      <div className="stats">
+        <div><span>{stats.pending}</span>por entregar</div>
+        <div><span>{stats.soon}</span>para hoy o mañana</div>
+        <div><span>{money(stats.receivable)}</span>por cobrar</div>
+        <div><span>{money(stats.collected)}</span>cobrado este mes</div>
+      </div>
+
+      <div className="order-tools">
+        <div className="chips" role="group" aria-label="Filtrar pedidos">
+          {FILTERS.map(([id, name]) => (
+            <button key={id} className={"chip" + (filter === id ? " on" : "")} aria-pressed={filter === id} onClick={() => setFilter(id)}>{name}</button>
+          ))}
+        </div>
+        <input type="search" className="search" placeholder="Buscar por nombre, teléfono o #" aria-label="Buscar pedidos" value={q} onChange={(e) => setQ(e.target.value)} />
+      </div>
+
+      {list.length === 0 ? (
+        <p className="note" style={{ padding: "20px 0" }}>No hay pedidos en esta vista.</p>
+      ) : (
+        <ul className="order-list">
+          {list.map((o) => (
+            <OrderCard key={o.id} o={o} open={open === o.id} today={today}
+              onToggle={() => setOpen(open === o.id ? null : o.id)}
+              onStatus={(s) => changeStatus(o, s)}
+              onSaved={(fields) => patchLocal(o.id, fields)}
+              flash={flash} onAuthError={onAuthError} />
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+function addDays(iso, n) {
+  const [y, m, d] = iso.split("-").map(Number);
+  const dt = new Date(y, m - 1, d + n);
+  const p = (x) => String(x).padStart(2, "0");
+  return `${dt.getFullYear()}-${p(dt.getMonth() + 1)}-${p(dt.getDate())}`;
+}
+
+function OrderCard({ o, open, today, onToggle, onStatus, onSaved, flash, onAuthError }) {
+  const pay = payInfo(o);
+  const late = o.delivery_date && o.delivery_date < today && o.status !== "entregado" && o.status !== "cancelado";
+  const isToday = o.delivery_date === today;
+  const detailId = `order-detail-${o.id}`;
+  return (
+    <li className={"order-card status-" + o.status}>
+      <div className="order-top">
+        <div>
+          <strong className="order-no">{o.order_number}</strong>
+          <span className={"when" + (late ? " late" : isToday ? " today" : "")}>
+            {late ? "Atrasado · " : isToday ? "Hoy · " : ""}{fmtDate(o.delivery_date)} {fmtTime(o.delivery_time)}
+          </span>
+        </div>
+        <label className="status-select">
+          <span className="sr-only">Estado del pedido {o.order_number}</span>
+          <select value={o.status || "nuevo"} onChange={(e) => onStatus(e.target.value)} className={"st-" + (o.status || "nuevo")}>
+            {STATUS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+          </select>
+        </label>
+      </div>
+      <div className="order-mid">
+        <div>
+          <div className="order-customer">{o.customer_name}</div>
+          <div className="note">{[o.size_label, o.cake_flavor, o.filling_flavor].filter(Boolean).join(" · ") || "—"}</div>
+        </div>
+        <div className="order-money">
+          <strong>{money(pay.due)}</strong>
+          <span className={"pay-badge pay-" + pay.state}>{pay.label}{pay.state === "anticipo" ? ` · debe ${money(pay.balance)}` : ""}</span>
+        </div>
+      </div>
+      <button className="link order-toggle" aria-expanded={open} aria-controls={detailId} onClick={onToggle}>
+        {open ? "Ocultar detalle" : "Ver detalle y cobro"}
+      </button>
+      {open && (
+        <div id={detailId} className="order-detail">
+          <div className="detail-grid">
+            <dl className="summary compact">
+              <div><dt>Teléfono</dt><dd><a href={`tel:${o.phone}`}>{o.phone || "—"}</a></dd></div>
+              <div><dt>Correo</dt><dd><a href={`mailto:${o.email}`}>{o.email || "—"}</a></dd></div>
+              <div><dt>SMS promociones</dt><dd>{o.sms_opt_in ? "Sí" : "No"}</dd></div>
+              <div><dt>Modalidad</dt><dd>{o.delivery_type || "—"}</dd></div>
+              <div><dt>Dirección</dt><dd>{o.delivery_address || "—"}</dd></div>
+              <div><dt>Rellenos</dt><dd>{o.filling_count || "—"}</dd></div>
+              <div><dt>Diseño</dt><dd>{o.design_label || "—"}</dd></div>
+              <div><dt>Descripción</dt><dd>{o.design_notes || "—"}</dd></div>
+              <div><dt>Pedido el</dt><dd>{new Date(o.ordered_at).toLocaleString("es-US", { dateStyle: "medium", timeStyle: "short" })}</dd></div>
+            </dl>
+            {o.has_design_image && (
+              <a href={`/api/orders/${o.id}/image?kind=design`} target="_blank" rel="noreferrer" className="ref-photo">
+                <img className="thumb-img" src={`/api/orders/${o.id}/image?kind=design&v=${o.img_version || ""}`} alt={`Foto de referencia del pedido ${o.order_number}`} />
+                <span className="note">Foto de referencia</span>
+              </a>
+            )}
+          </div>
+          <PaymentForm o={o} onSaved={onSaved} flash={flash} onAuthError={onAuthError} />
+        </div>
+      )}
+    </li>
+  );
+}
+
+function PaymentForm({ o, onSaved, flash, onAuthError }) {
+  const [f, setF] = useState(() => ({
+    finalTotal: o.final_total != null ? String(Number(o.final_total)) : "",
+    amount: Number(o.paid_amount || 0) > 0 ? String(Number(o.paid_amount)) : "",
+    date: o.paid_at || localToday(),
+    method: o.payment_method || "",
+    note: o.payment_note || "",
+  }));
+  const [proof, setProof] = useState(undefined); // undefined = sin cambios · string = nueva · null = quitar
+  const [saving, setSaving] = useState(false);
+  const set = (patch) => setF((x) => ({ ...x, ...patch }));
+  const due = f.finalTotal !== "" ? Number(f.finalTotal) : Number(o.total || 0);
+  const balance = Math.max(0, due - Number(f.amount || 0));
+  const ids = (s) => `pay-${s}-${o.id}`;
+
+  async function pick(e) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    try { setProof(await fileToDataUrl(file, 1400, 0.8)); } catch { flash("No se pudo leer la foto", "error"); }
+  }
+
+  async function save(e) {
+    e.preventDefault();
+    setSaving(true);
+    try {
+      const payment = { ...f, amount: f.amount || 0, method: f.method || null, date: Number(f.amount || 0) > 0 ? f.date : f.date || null };
+      if (proof !== undefined) payment.proof = proof;
+      await api(`/api/orders/${o.id}`, { method: "PATCH", body: JSON.stringify({ payment }) });
+      onSaved({
+        final_total: f.finalTotal === "" ? null : Number(f.finalTotal),
+        paid_amount: Number(f.amount || 0),
+        paid_at: f.date,
+        payment_method: f.method || null,
+        payment_note: f.note,
+        ...(proof !== undefined ? { has_payment_proof: !!proof, img_version: String(Date.now()) } : {}),
+      });
+      setProof(undefined);
+      flash(`Cobro de ${o.order_number} guardado`);
+    } catch (err) {
+      onAuthError(err) || flash(err.message, "error");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const existingProof = o.has_payment_proof && proof === undefined;
+
+  return (
+    <form className="pay-form" onSubmit={save}>
+      <h3>Cobro</h3>
+      <div className="form-grid">
+        <div>
+          <label htmlFor={ids("final")}>Precio final (USD)</label>
+          <input id={ids("final")} type="number" min="0" step="0.01" inputMode="decimal" placeholder={Number(o.total || 0).toFixed(2)}
+            value={f.finalTotal} onChange={(e) => set({ finalTotal: e.target.value })} aria-describedby={ids("final-hint")} />
+          <span id={ids("final-hint")} className="hint">Déjalo vacío si es igual al estimado ({money(o.total)}).</span>
+        </div>
+        <div>
+          <label htmlFor={ids("amount")}>Monto cobrado (USD)</label>
+          <input id={ids("amount")} type="number" min="0" step="0.01" inputMode="decimal" value={f.amount} onChange={(e) => set({ amount: e.target.value })} />
+          <button type="button" className="link" onClick={() => set({ amount: due.toFixed(2) })}>Pagó completo ({money(due)})</button>
+        </div>
+        <div>
+          <label htmlFor={ids("date")}>Fecha de pago</label>
+          <input id={ids("date")} type="date" value={f.date} onChange={(e) => set({ date: e.target.value })} />
+        </div>
+        <div>
+          <label htmlFor={ids("method")}>Forma de pago</label>
+          <select id={ids("method")} value={f.method} onChange={(e) => set({ method: e.target.value })}>
+            <option value="">Elegir…</option>
+            {METHODS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+          </select>
+        </div>
+        <div className="span-2">
+          <label htmlFor={ids("note")}>Nota (opcional)</label>
+          <input id={ids("note")} value={f.note} maxLength={500} placeholder="Ej.: anticipo 50 %, resto al entregar" onChange={(e) => set({ note: e.target.value })} />
+        </div>
+        <div className="span-2">
+          <label htmlFor={ids("proof")}>Evidencia de pago (foto o captura)</label>
+          <input id={ids("proof")} type="file" accept="image/*" onChange={pick} />
+          <div className="proof-row">
+            {existingProof && (
+              <a href={`/api/orders/${o.id}/image?kind=proof`} target="_blank" rel="noreferrer">
+                <img className="thumb-img" src={`/api/orders/${o.id}/image?kind=proof&v=${o.img_version || ""}`} alt={`Evidencia de pago del pedido ${o.order_number}`} />
+              </a>
+            )}
+            {typeof proof === "string" && <img className="thumb-img" src={proof} alt="Nueva evidencia de pago (sin guardar)" />}
+            {(existingProof || typeof proof === "string") && (
+              <button type="button" className="btn ghost small danger" onClick={() => setProof(o.has_payment_proof ? null : undefined)}>Quitar foto</button>
+            )}
+            {proof === null && <span className="note">La foto se quitará al guardar.</span>}
+          </div>
+        </div>
+      </div>
+      <div className="pay-footer">
+        <span>Saldo pendiente: <strong className={balance > 0 ? "due" : "paid"}>{money(balance)}</strong>
+          {o.payment_method && <span className="note"> · último registro: {METHOD_LABEL[o.payment_method]} {o.paid_at ? fmtDate(o.paid_at, { day: "numeric", month: "short" }) : ""}</span>}
+        </span>
+        <button className="btn" disabled={saving}>{saving ? "Guardando…" : "Guardar cobro"}</button>
+      </div>
+    </form>
+  );
+}
+
+/* ================= Catálogo ================= */
+
+function usePoster(load, flash, onAuthError) {
+  const [busy, setBusy] = useState(false);
+  const post = useCallback(async (body, okText = "Guardado") => {
     setBusy(true);
     try {
-      const res = await fetch("/api/admin", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "x-admin-key": key },
-        body: JSON.stringify(body),
-      });
-      const json = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(json.error || "Error al guardar");
-      await load(key);
+      await api("/api/admin", { method: "POST", body: JSON.stringify(body) });
+      await load();
       flash(okText);
       return true;
     } catch (err) {
-      flash(err.message, "error");
+      onAuthError(err) || flash(err.message, "error");
       return false;
     } finally {
       setBusy(false);
     }
-  }
+  }, [load, flash, onAuthError]);
+  return { busy, post };
+}
 
-  async function pickPhoto(e, apply) {
-    const file = e.target.files?.[0];
-    e.target.value = "";
-    if (!file) return;
-    try {
-      const url = await fileToDataUrl(file, 900);
-      apply(url);
-    } catch {
-      flash("No se pudo leer la foto", "error");
-    }
-  }
+async function pickPhoto(e, apply, flash) {
+  const file = e.target.files?.[0];
+  e.target.value = "";
+  if (!file) return;
+  try { apply(await fileToDataUrl(file, 900)); } catch { flash("No se pudo leer la foto", "error"); }
+}
+
+function Catalog({ data, load, flash, onAuthError }) {
+  const { busy, post } = usePoster(load, flash, onAuthError);
+  const [opt, setOpt] = useState(emptyOpt);
+  const grouped = {};
+  (data?.options || []).forEach((o) => { (grouped[o.category] = grouped[o.category] || []).push(o); });
 
   async function saveOption(e) {
     e.preventDefault();
     if (await post(opt, opt.id ? "Opción actualizada" : "Opción agregada")) setOpt(emptyOpt);
   }
+  async function removeOption(o) {
+    if (confirm(`¿Eliminar "${o.label || "(sin nombre)"}"? Esta acción no se puede deshacer.`)) {
+      if (await post({ type: "option_delete", id: o.id }, "Opción eliminada") && opt.id === o.id) setOpt(emptyOpt);
+    }
+  }
+
+  return (
+    <>
+      {CAT.map(([cat, name]) => {
+        const items = grouped[cat] || [];
+        const visible = items.some((o) => o.active !== false);
+        return (
+          <div className="card" key={cat} style={{ marginTop: 16 }}>
+            <div className="section-head">
+              <h2 className="h3">{name}</h2>
+              <label className="check">
+                <input type="checkbox" checked={visible} disabled={busy || !items.length}
+                  onChange={(e) => post({ type: "category_active", category: cat, active: e.target.checked }, e.target.checked ? "Paso visible" : "Paso oculto")} />
+                Mostrar este paso al cliente
+              </label>
+            </div>
+            <table className="table">
+              <caption className="sr-only">Opciones de {name}</caption>
+              <thead className="sr-only"><tr><th>Nombre</th><th>Precio</th><th>Estado</th><th>Acciones</th></tr></thead>
+              <tbody>
+                {items.map((o) => (
+                  <tr key={o.id} className={o.active === false ? "muted" : ""}>
+                    <td>{o.label || <em className="alert-text">Sin nombre (no se muestra)</em>}</td>
+                    <td>{money(o.price)}</td>
+                    <td>{o.active === false ? "Oculto" : "Visible"}</td>
+                    <td><div className="actions">
+                      <button className="btn ghost small" type="button" aria-label={`Editar ${o.label}`} onClick={() => { setOpt({ ...emptyOpt, ...o, price: Number(o.price), image_url: o.image_url || "" }); document.getElementById("opt-form")?.scrollIntoView({ behavior: "smooth" }); }}>Editar</button>
+                      <button className="btn ghost small danger" type="button" aria-label={`Eliminar ${o.label}`} onClick={() => removeOption(o)}>Eliminar</button>
+                    </div></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        );
+      })}
+      <div className="card" id="opt-form" style={{ marginTop: 16 }}>
+        <h2 className="h3">{opt.id ? `Editar: ${opt.label}` : "Nueva opción"}</h2>
+        <form onSubmit={saveOption} className="form-grid">
+          <div><label htmlFor="o-cat">Categoría</label>
+            <select id="o-cat" value={opt.category} onChange={(e) => setOpt({ ...opt, category: e.target.value })}>
+              {CAT.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+            </select></div>
+          <div><label htmlFor="o-name">Nombre *</label><input id="o-name" required value={opt.label} onChange={(e) => setOpt({ ...opt, label: e.target.value })} /></div>
+          <div><label htmlFor="o-desc">Descripción</label><input id="o-desc" value={opt.description || ""} onChange={(e) => setOpt({ ...opt, description: e.target.value })} /></div>
+          <div><label htmlFor="o-price">Precio (USD)</label><input id="o-price" type="number" min="0" step="0.01" value={opt.price} onChange={(e) => setOpt({ ...opt, price: e.target.value })} /></div>
+          <div><label className="check"><input type="checkbox" checked={opt.active !== false} onChange={(e) => setOpt({ ...opt, active: e.target.checked })} /> Visible para clientes</label></div>
+          <div><label htmlFor="o-photo">Foto</label><input id="o-photo" type="file" accept="image/*" onChange={(e) => pickPhoto(e, (url) => setOpt((o) => ({ ...o, image_url: url })), flash)} /></div>
+          {opt.image_url && <img className="thumb-img" src={opt.image_url} alt="Vista previa de la foto" />}
+          <div className="row">
+            {opt.id && <button type="button" className="btn ghost" onClick={() => setOpt(emptyOpt)}>Cancelar</button>}
+            <button className="btn" disabled={busy}>{opt.id ? "Guardar cambios" : "Agregar opción"}</button>
+          </div>
+        </form>
+      </div>
+    </>
+  );
+}
+
+/* ================= Diseños ================= */
+
+function Designs({ data, load, flash, onAuthError }) {
+  const { busy, post } = usePoster(load, flash, onAuthError);
+  const [design, setDesign] = useState(emptyDesign);
+
   async function saveDesign(e) {
     e.preventDefault();
     if (!design.image_url) return flash("Agrega una foto del diseño", "error");
     const ok = await post({ ...design, type: design.id ? "design_update" : "design" }, design.id ? "Diseño actualizado" : "Diseño agregado");
     if (ok) setDesign(emptyDesign);
-  }
-  async function removeOption(o) {
-    if (confirm(`¿Eliminar "${o.label}"? Esta acción no se puede deshacer.`)) {
-      if (await post({ type: "option_delete", id: o.id }, "Opción eliminada") && opt.id === o.id) setOpt(emptyOpt);
-    }
   }
   async function removeDesign(d) {
     if (confirm(`¿Eliminar el diseño "${d.label}"?`)) {
@@ -130,184 +574,35 @@ export default function AdminPage() {
     }
   }
 
-  if (!authed) {
-    return (
-      <main className="wrap narrow">
-        <form className="card" onSubmit={login}>
-          <Logo />
-          <h2>Panel de administración</h2>
-          <p className="note">Acceso solo para el equipo de Karla's Bake.</p>
-          <label htmlFor="admin-key">Clave</label>
-          <input id="admin-key" type="password" autoComplete="current-password" autoFocus value={key} onChange={(e) => setKey(e.target.value)} />
-          <button className="btn wide" style={{ marginTop: 14 }} disabled={busy || !key}>{busy ? "Entrando..." : "Entrar"}</button>
-          {msg && <p className={msg.kind === "error" ? "alert" : "ok"} role="status">{msg.text}</p>}
-        </form>
-      </main>
-    );
-  }
-
-  const grouped = {};
-  (data?.options || []).forEach((o) => { (grouped[o.category] = grouped[o.category] || []).push(o); });
-  const pending = orders.filter((o) => String(o.delivery_date || "").slice(0, 10) >= new Date().toISOString().slice(0, 10));
-
   return (
-    <main className="wrap admin">
-      <div className="admin-bar card">
-        <Logo size={44} />
-        <nav className="tabs" role="tablist">
-          {[["pedidos", `Pedidos (${orders.length})`], ["catalogo", "Catálogo"], ["disenos", "Diseños"]].map(([id, name]) => (
-            <button key={id} role="tab" aria-selected={tab === id} className={tab === id ? "on" : ""} onClick={() => setTab(id)}>{name}</button>
-          ))}
-        </nav>
-        <div style={{ display: "flex", gap: 8 }}>
-          <button className="btn ghost small" onClick={() => load(key).then(() => flash("Actualizado")).catch((e) => flash(e.message, "error"))}>Actualizar</button>
-          <button className="btn ghost small" onClick={logout}>Salir</button>
+    <div className="card" style={{ marginTop: 16 }}>
+      <h2 className="h3">{design.id ? `Editar: ${design.label}` : "Agregar diseño"}</h2>
+      <form onSubmit={saveDesign} className="form-grid">
+        <div><label htmlFor="d-name">Nombre *</label><input id="d-name" required value={design.label} onChange={(e) => setDesign({ ...design, label: e.target.value })} /></div>
+        <div><label htmlFor="d-price">Precio extra (USD)</label><input id="d-price" type="number" min="0" step="0.01" value={design.price} onChange={(e) => setDesign({ ...design, price: e.target.value })} /></div>
+        <div><label className="check"><input type="checkbox" checked={design.active !== false} onChange={(e) => setDesign({ ...design, active: e.target.checked })} /> Visible para clientes</label></div>
+        <div><label htmlFor="d-photo">Foto *</label><input id="d-photo" type="file" accept="image/*" onChange={(e) => pickPhoto(e, (url) => setDesign((d) => ({ ...d, image_url: url })), flash)} /></div>
+        {design.image_url && <img className="thumb-img" src={design.image_url} alt="Vista previa del diseño" />}
+        <div className="row">
+          {design.id && <button type="button" className="btn ghost" onClick={() => setDesign(emptyDesign)}>Cancelar</button>}
+          <button className="btn" disabled={busy}>{design.id ? "Guardar cambios" : "Agregar diseño"}</button>
         </div>
+      </form>
+      <div className="grid" style={{ marginTop: 18 }}>
+        {(data?.designs || []).map((d) => (
+          <div className={"opt static" + (d.active === false ? " muted" : "")} key={d.id}>
+            <img src={d.image_url || d.image} alt={d.label} loading="lazy" />
+            <div className="meta">
+              <strong>{d.label}</strong>
+              <span className="price">+ {money(d.price)}{d.active === false ? " · oculto" : ""}</span>
+              <div className="actions" style={{ marginTop: 8 }}>
+                <button className="btn ghost small" type="button" aria-label={`Editar ${d.label}`} onClick={() => { setDesign({ id: d.id, label: d.label, image_url: d.image_url || d.image || "", price: Number(d.price || 0), active: d.active !== false }); window.scrollTo({ top: 0, behavior: "smooth" }); }}>Editar</button>
+                <button className="btn ghost small danger" type="button" aria-label={`Eliminar ${d.label}`} onClick={() => removeDesign(d)}>Eliminar</button>
+              </div>
+            </div>
+          </div>
+        ))}
       </div>
-      {msg && <p className={"toast " + (msg.kind === "error" ? "alert" : "ok")} role="status">{msg.text}</p>}
-
-      {tab === "pedidos" && (
-        <section className="card" style={{ marginTop: 16 }}>
-          <div className="stats">
-            <div><span>{orders.length}</span>pedidos totales</div>
-            <div><span>{pending.length}</span>por entregar</div>
-            <div><span>{money(pending.reduce((s, o) => s + Number(o.total || 0), 0))}</span>por cobrar (estimado)</div>
-          </div>
-          {orders.length === 0 ? <p className="note">Aún no hay pedidos.</p> : (
-            <div className="table-scroll">
-              <table className="table">
-                <thead><tr><th>Pedido</th><th>Entrega</th><th>Cliente</th><th>Tamaño / sabor</th><th>Total</th><th /></tr></thead>
-                <tbody>
-                  {orders.map((o) => (
-                    <FragmentRow key={o.id || o.order_number} o={o} open={openOrder === o.id} onToggle={() => setOpenOrder(openOrder === o.id ? null : o.id)} />
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </section>
-      )}
-
-      {tab === "catalogo" && (
-        <>
-          {CAT.map(([cat, name]) => {
-            const items = grouped[cat] || [];
-            const visible = items.some((o) => o.active !== false);
-            return (
-              <section className="card" key={cat} style={{ marginTop: 16 }}>
-                <div className="section-head">
-                  <h3>{name}</h3>
-                  <label className="check">
-                    <input type="checkbox" checked={visible} disabled={busy || !items.length}
-                      onChange={(e) => post({ type: "category_active", category: cat, active: e.target.checked }, e.target.checked ? "Paso visible" : "Paso oculto")} />
-                    Mostrar este paso al cliente
-                  </label>
-                </div>
-                <table className="table">
-                  <tbody>
-                    {items.map((o) => (
-                      <tr key={o.id} className={o.active === false ? "muted" : ""}>
-                        <td>{o.label}</td>
-                        <td>{money(o.price)}</td>
-                        <td>{o.active === false ? "Oculto" : "Visible"}</td>
-                        <td><div className="actions">
-                          <button className="btn ghost small" type="button" onClick={() => { setOpt({ ...emptyOpt, ...o, price: Number(o.price), image_url: o.image_url || "" }); document.getElementById("opt-form")?.scrollIntoView({ behavior: "smooth" }); }}>Editar</button>
-                          <button className="btn ghost small danger" type="button" onClick={() => removeOption(o)}>Eliminar</button>
-                        </div></td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </section>
-            );
-          })}
-          <section className="card" id="opt-form" style={{ marginTop: 16 }}>
-            <h3>{opt.id ? `Editar: ${opt.label}` : "Nueva opción"}</h3>
-            <form onSubmit={saveOption} className="form-grid">
-              <div><label>Categoría</label>
-                <select value={opt.category} onChange={(e) => setOpt({ ...opt, category: e.target.value })}>
-                  {CAT.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
-                </select></div>
-              <div><label>Nombre *</label><input required value={opt.label} onChange={(e) => setOpt({ ...opt, label: e.target.value })} /></div>
-              <div><label>Descripción</label><input value={opt.description || ""} onChange={(e) => setOpt({ ...opt, description: e.target.value })} /></div>
-              <div><label>Precio (USD)</label><input type="number" min="0" step="0.01" value={opt.price} onChange={(e) => setOpt({ ...opt, price: e.target.value })} /></div>
-              <div><label className="check"><input type="checkbox" checked={opt.active !== false} onChange={(e) => setOpt({ ...opt, active: e.target.checked })} /> Visible para clientes</label></div>
-              <div><label>Foto</label><input type="file" accept="image/*" onChange={(e) => pickPhoto(e, (url) => setOpt((o) => ({ ...o, image_url: url })))} /></div>
-              {opt.image_url && <img className="thumb-img" src={opt.image_url} alt="" />}
-              <div className="row">
-                {opt.id && <button type="button" className="btn ghost" onClick={() => setOpt(emptyOpt)}>Cancelar</button>}
-                <button className="btn" disabled={busy}>{opt.id ? "Guardar cambios" : "Agregar opción"}</button>
-              </div>
-            </form>
-          </section>
-        </>
-      )}
-
-      {tab === "disenos" && (
-        <section className="card" style={{ marginTop: 16 }}>
-          <h3>{design.id ? `Editar: ${design.label}` : "Agregar diseño"}</h3>
-          <form onSubmit={saveDesign} className="form-grid">
-            <div><label>Nombre *</label><input required value={design.label} onChange={(e) => setDesign({ ...design, label: e.target.value })} /></div>
-            <div><label>Precio extra (USD)</label><input type="number" min="0" step="0.01" value={design.price} onChange={(e) => setDesign({ ...design, price: e.target.value })} /></div>
-            <div><label className="check"><input type="checkbox" checked={design.active !== false} onChange={(e) => setDesign({ ...design, active: e.target.checked })} /> Visible para clientes</label></div>
-            <div><label>Foto *</label><input type="file" accept="image/*" onChange={(e) => pickPhoto(e, (url) => setDesign((d) => ({ ...d, image_url: url })))} /></div>
-            {design.image_url && <img className="thumb-img" src={design.image_url} alt="" />}
-            <div className="row">
-              {design.id && <button type="button" className="btn ghost" onClick={() => setDesign(emptyDesign)}>Cancelar</button>}
-              <button className="btn" disabled={busy}>{design.id ? "Guardar cambios" : "Agregar diseño"}</button>
-            </div>
-          </form>
-          <div className="grid" style={{ marginTop: 18 }}>
-            {(data?.designs || []).map((d) => (
-              <div className={"opt static" + (d.active === false ? " muted" : "")} key={d.id}>
-                <img src={d.image_url || d.image} alt={d.label} loading="lazy" />
-                <div className="meta">
-                  <strong>{d.label}</strong>
-                  <span className="price">+ {money(d.price)}{d.active === false ? " · oculto" : ""}</span>
-                  <div className="actions" style={{ marginTop: 8 }}>
-                    <button className="btn ghost small" type="button" onClick={() => { setDesign({ id: d.id, label: d.label, image_url: d.image_url || d.image || "", price: Number(d.price || 0), active: d.active !== false }); window.scrollTo({ top: 0, behavior: "smooth" }); }}>Editar</button>
-                    <button className="btn ghost small danger" type="button" onClick={() => removeDesign(d)}>Eliminar</button>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </section>
-      )}
-    </main>
-  );
-}
-
-function FragmentRow({ o, open, onToggle }) {
-  return (
-    <>
-      <tr className="clickable" onClick={onToggle}>
-        <td><strong>{o.order_number}</strong><div className="note">{new Date(o.ordered_at).toLocaleDateString("es-US")}</div></td>
-        <td>{fmtDate(o.delivery_date)}<div className="note">{o.delivery_time}</div></td>
-        <td>{o.customer_name}<div className="note">{o.phone}</div></td>
-        <td>{o.size_label || "—"}<div className="note">{[o.cake_flavor, o.filling_flavor].filter(Boolean).join(" / ")}</div></td>
-        <td><strong>{money(o.total)}</strong></td>
-        <td>{open ? "▲" : "▼"}</td>
-      </tr>
-      {open && (
-        <tr className="detail">
-          <td colSpan={6}>
-            <div className="detail-grid">
-              <dl className="summary compact">
-                <div><dt>Correo</dt><dd><a href={`mailto:${o.email}`}>{o.email || "—"}</a></dd></div>
-                <div><dt>Teléfono</dt><dd><a href={`tel:${o.phone}`}>{o.phone || "—"}</a></dd></div>
-                <div><dt>SMS promociones</dt><dd>{o.sms_opt_in ? "Sí" : "No"}</dd></div>
-                <div><dt>Modalidad</dt><dd>{o.delivery_type || "—"}</dd></div>
-                <div><dt>Dirección</dt><dd>{o.delivery_address || "—"}</dd></div>
-                <div><dt>Rellenos</dt><dd>{o.filling_count || "—"}</dd></div>
-                <div><dt>Diseño</dt><dd>{o.design_label || "—"}</dd></div>
-                <div><dt>Descripción</dt><dd>{o.design_notes || "—"}</dd></div>
-              </dl>
-              {o.design_image && <a href={o.design_image} target="_blank" rel="noreferrer"><img className="thumb-img" src={o.design_image} alt="Referencia" /></a>}
-            </div>
-          </td>
-        </tr>
-      )}
-    </>
+    </div>
   );
 }

@@ -26,7 +26,7 @@ const CALL = "tel:+14093325768";
 export default function Home() {
   const { t, lang } = useI18n();
   return (
-    <main className="wrap promo">
+    <main id="contenido" className="wrap promo">
       <section id="inicio" className="hero">
         <div>
           <Logo size={120} />

@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { defaultCatalog, IMAGES } from "@/lib/defaults";
 import Logo from "@/components/Logo";
 import { useI18n } from "@/components/LanguageProvider";
@@ -67,6 +67,13 @@ export default function PedidoPage() {
   const [saving, setSaving] = useState(false);
   const [done, setDone] = useState(null);
   const [form, setForm] = useState(EMPTY);
+  // Identificador único del intento: si el cliente reenvía, no se duplica el pedido.
+  const [clientRef, setClientRef] = useState("");
+  const [website, setWebsite] = useState(""); // campo trampa anti-bots
+  const headingRef = useRef(null);
+  const firstRender = useRef(true);
+  const newRef = () => (globalThis.crypto?.randomUUID ? crypto.randomUUID() : String(Date.now()) + Math.random().toString(36).slice(2));
+  useEffect(() => { setClientRef(newRef()); }, []);
   const set = (patch) => setForm((f) => ({ ...f, ...patch }));
 
   useEffect(() => {
@@ -107,6 +114,12 @@ export default function PedidoPage() {
 
   const previewImg = form.uploadPreview || form.designImage || find("size", form.size)?.image || IMAGES.hero;
   const current = STEPS[Math.min(step, STEPS.length - 1)];
+
+  // Al cambiar de paso, el foco va al título para que el lector de pantalla lo anuncie.
+  useEffect(() => {
+    if (firstRender.current) { firstRender.current = false; return; }
+    headingRef.current?.focus();
+  }, [step]);
   const goTo = (id) => { setStatus(""); setStep(Math.max(0, STEPS.findIndex((s) => s.id === id))); };
 
   function validate(id) {
@@ -164,7 +177,7 @@ export default function PedidoPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          lang,
+          lang, clientRef, website,
           customer: { name: form.name, phone: form.phone, email: form.email, address: form.address, smsOptIn: form.smsOptIn },
           deliveryType: form.deliveryType,
           deliveryAddress: isShipping(form.deliveryType) ? form.deliveryAddress || form.address : "",
@@ -202,7 +215,7 @@ export default function PedidoPage() {
 
   if (done) {
     return (
-      <main className="wrap narrow">
+      <main id="contenido" className="wrap narrow">
         <div className="card done">
           <Logo size={72} />
           <h1 className="done-title">{t.doneTitle}</h1>
@@ -212,7 +225,7 @@ export default function PedidoPage() {
           <p>{t.doneBody}</p>
           <div className="row center">
             <a className="btn" href="/">{t.backHome}</a>
-            <button className="btn ghost" onClick={() => { setForm(EMPTY); setStep(0); setDone(null); }}>{t.newOrder}</button>
+            <button className="btn ghost" onClick={() => { setForm(EMPTY); setStep(0); setDone(null); setClientRef(newRef()); }}>{t.newOrder}</button>
           </div>
         </div>
       </main>
@@ -222,15 +235,15 @@ export default function PedidoPage() {
   const progress = Math.round(((step + 1) / STEPS.length) * 100);
 
   return (
-    <main className="wrap">
+    <main id="contenido" className="wrap">
       <div className="modal-bg">
-        <div className="modal">
+        <div className="modal" role="dialog" aria-modal="true" aria-labelledby="step-title">
           <div className="modal-main">
             <div className="modal-head">
               <Logo size={48} />
               <div style={{ flex: 1 }}>
                 <p className="note">{t.stepOf} {step + 1} {t.of} {STEPS.length}</p>
-                <h2 style={{ margin: 0 }}>{current.id === "resumen" ? t.summaryTitle : t.steps[current.id]}</h2>
+                <h2 id="step-title" ref={headingRef} tabIndex={-1} style={{ margin: 0 }}>{current.id === "resumen" ? t.summaryTitle : t.steps[current.id]}</h2>
                 <div className="progress" aria-hidden="true"><span style={{ width: progress + "%" }} /></div>
               </div>
             </div>
@@ -238,7 +251,7 @@ export default function PedidoPage() {
             {current.id === "cliente" && (
               <>
                 <label htmlFor="f-name">{t.name} *</label>
-                <input id="f-name" autoComplete="name" value={form.name} onChange={(e) => set({ name: e.target.value })} />
+                <input id="f-name" autoComplete="name" required aria-required="true" value={form.name} onChange={(e) => set({ name: e.target.value })} />
                 <label htmlFor="f-phone">{t.phone} *</label>
                 <input id="f-phone" type="tel" autoComplete="tel" inputMode="tel" value={form.phone} onChange={(e) => set({ phone: e.target.value })} />
                 <label htmlFor="f-email">{t.email} *</label>
@@ -249,6 +262,10 @@ export default function PedidoPage() {
                   <input type="checkbox" checked={form.smsOptIn} onChange={(e) => set({ smsOptIn: e.target.checked })} />
                   {t.smsOpt}
                 </label>
+                <div className="hp" aria-hidden="true">
+                  <label htmlFor="f-website">Website</label>
+                  <input id="f-website" tabIndex={-1} autoComplete="off" value={website} onChange={(e) => setWebsite(e.target.value)} />
+                </div>
               </>
             )}
             {current.id === "fecha" && (

@@ -8,14 +8,17 @@ export function LanguageProvider({ children }) {
   const [lang, setLang] = useState("es");
 
   useEffect(() => {
-    const saved = typeof window !== "undefined" && localStorage.getItem("kake-lang");
-    if (saved === "en" || saved === "es") setLang(saved);
-    else if (typeof navigator !== "undefined" && navigator.language?.toLowerCase().startsWith("en")) setLang("en");
+    let saved = null;
+    try { saved = localStorage.getItem("kake-lang"); } catch {}
+    const initial = saved === "en" || saved === "es" ? saved
+      : navigator.language?.toLowerCase().startsWith("en") ? "en" : "es";
+    setLang(initial);
+    document.documentElement.lang = initial;
   }, []);
 
   function change(next) {
     setLang(next);
-    localStorage.setItem("kake-lang", next);
+    try { localStorage.setItem("kake-lang", next); } catch {}
     if (typeof document !== "undefined") document.documentElement.lang = next;
   }
 

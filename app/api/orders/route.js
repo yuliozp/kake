@@ -1,30 +1,54 @@
 import { NextResponse } from "next/server";
-import { createOrder, listOrders, priceOrder } from "@/lib/db";
+import { createOrder, findByClientRef, listOrders, priceOrder, rateLimit } from "@/lib/db";
 import { notifyNewOrder } from "@/lib/notify";
 import { isAdmin } from "@/lib/auth";
+import { clientIp, isISODate, isUploadedImage, sameOrigin, str, todayInTexas } from "@/lib/validate";
 
 export const dynamic = "force-dynamic";
 
-const MAX_IMAGE = 1_500_000; // ~1.1 MB de foto ya comprimida
-const str = (v, max = 200) => String(v ?? "").trim().slice(0, max);
+const fail = (error, status = 400) => NextResponse.json({ error }, { status });
 
 // Solo el panel admin puede ver los pedidos (contienen datos de clientes).
 export async function GET(req) {
-  if (!isAdmin(req)) return NextResponse.json({ error: "No autorizado" }, { status: 401 });
+  if (!isAdmin(req)) return fail("Sesión vencida. Vuelve a entrar.", 401);
   try {
-    return NextResponse.json({ orders: await listOrders() });
+    return NextResponse.json({ orders: await listOrders() }, { headers: { "Cache-Control": "no-store" } });
   } catch (e) {
     console.error("[orders:list]", e);
-    return NextResponse.json({ error: "No se pudieron cargar los pedidos" }, { status: 500 });
+    return fail("No se pudieron cargar los pedidos", 500);
   }
 }
 
 export async function POST(req) {
+  if (!sameOrigin(req)) return fail("Origen no permitido", 403);
+
+  const raw = await req.text().catch(() => "");
+  if (raw.length > 2_000_000) return fail("El pedido es muy pesado. Prueba con una foto más pequeña.", 413);
   let body;
   try {
-    body = await req.json();
+    body = JSON.parse(raw);
   } catch {
-    return NextResponse.json({ error: "Solicitud inválida" }, { status: 400 });
+    return fail("Solicitud inválida");
+  }
+
+  // Campo trampa: invisible para personas, los bots lo llenan.
+  if (body.website) {
+    console.warn("[orders:create] bloqueado por campo trampa", clientIp(req));
+    return fail("Solicitud inválida");
+  }
+
+  const clientRef = /^[A-Za-z0-9-]{8,64}$/.test(body.clientRef || "") ? body.clientRef : null;
+  if (clientRef) {
+    const existing = await findByClientRef(clientRef).catch(() => null);
+    if (existing) return NextResponse.json({ orderNumber: existing.order_number, total: Number(existing.total), duplicate: true });
+  }
+
+  try {
+    if (!(await rateLimit("order:" + clientIp(req), 10, 60 * 60))) {
+      return fail("Recibimos muchos pedidos desde tu conexión. Escríbenos por WhatsApp y te ayudamos.", 429);
+    }
+  } catch (e) {
+    console.error("[orders:create] rate limit", e);
   }
 
   const customer = {
@@ -34,32 +58,27 @@ export async function POST(req) {
     address: str(body?.customer?.address, 300),
     smsOptIn: !!body?.customer?.smsOptIn,
   };
-  if (!customer.name || !customer.phone || !customer.email) {
-    return NextResponse.json({ error: "Faltan nombre, teléfono o correo" }, { status: 400 });
-  }
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(customer.email)) {
-    return NextResponse.json({ error: "El correo no es válido" }, { status: 400 });
-  }
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(body.deliveryDate || "")) {
-    return NextResponse.json({ error: "Elige una fecha de entrega" }, { status: 400 });
-  }
-  const designImage = typeof body.designImage === "string" ? body.designImage : "";
-  if (designImage.length > MAX_IMAGE) {
-    return NextResponse.json({ error: "La foto es muy pesada. Prueba con otra." }, { status: 413 });
-  }
+  if (!customer.name || !customer.phone || !customer.email) return fail("Faltan nombre, teléfono o correo");
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(customer.email)) return fail("El correo no es válido");
+  if (customer.phone.replace(/\D/g, "").length < 7) return fail("El teléfono no es válido");
+  if (!isISODate(body.deliveryDate)) return fail("Elige una fecha de entrega");
+  if (body.deliveryDate < todayInTexas()) return fail("La fecha de entrega ya pasó. Elige otra.");
+  const designImage = body.designImage || "";
+  if (designImage && !isUploadedImage(designImage)) return fail("La foto no es válida o es muy pesada. Prueba con otra.");
 
   const order = {
     customer,
+    clientRef,
     lang: body.lang === "en" ? "en" : "es",
     deliveryType: str(body.deliveryType, 120),
     deliveryAddress: str(body.deliveryAddress, 300),
     deliveryDate: body.deliveryDate,
-    deliveryTime: str(body.deliveryTime, 10),
+    deliveryTime: /^\d{2}:\d{2}$/.test(body.deliveryTime || "") ? body.deliveryTime : "",
     size: str(body.size, 120),
     cakeFlavor: str(body.cakeFlavor, 120),
     fillingFlavor: str(body.fillingFlavor, 120),
     fillingCountLabel: str(body.fillingCount, 120),
-    designId: body.designId ? str(body.designId, 20) : null,
+    designId: /^\d+$/.test(String(body.designId ?? "")) ? String(body.designId) : null,
     designLabel: str(body.designLabel, 120),
     designNotes: str(body.designNotes, 1000),
     designImage,
@@ -67,14 +86,21 @@ export async function POST(req) {
 
   try {
     const total = await priceOrder(order);
-    const { orderNumber } = await createOrder(order, total);
+    let orderNumber;
+    try {
+      ({ orderNumber } = await createOrder(order, total));
+    } catch (e) {
+      // Dos envíos simultáneos del mismo formulario: gana el primero.
+      const again = clientRef && (await findByClientRef(clientRef).catch(() => null));
+      if (again) return NextResponse.json({ orderNumber: again.order_number, total: Number(again.total), duplicate: true });
+      throw e;
+    }
     const mail = await notifyNewOrder(orderNumber, order, total);
     if (!mail.ok) console.warn("[orders:notify] no se envió el aviso", orderNumber, mail.error || mail.via);
     return NextResponse.json({ orderNumber, total, emailed: mail.ok });
   } catch (e) {
     console.error("[orders:create]", e);
     const msg = String(e?.message || "");
-    const userFacing = msg.includes("ya no está disponible") ? msg : "No pudimos guardar tu pedido. Intenta de nuevo o escríbenos.";
-    return NextResponse.json({ error: userFacing }, { status: 500 });
+    return fail(msg.includes("ya no está disponible") ? msg : "No pudimos guardar tu pedido. Intenta de nuevo o escríbenos.", 500);
   }
 }

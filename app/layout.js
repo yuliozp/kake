@@ -29,6 +29,7 @@ export default function RootLayout({ children }) {
   return (
     <html lang="es">
       <body className={nunito.className}>
+        <a href="#contenido" className="skip-link">Saltar al contenido</a>
         <LanguageProvider>
           <Nav />
           {children}
