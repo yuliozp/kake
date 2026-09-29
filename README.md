@@ -28,8 +28,8 @@ Sitio de pedidos de pasteles personalizados — Next.js 16 en Vercel + Postgres 
 | `RESEND_OWNER_EMAIL` | Opcional | Copia de respaldo si el envío principal falla. |
 | `GOOGLE_PLACES_API_KEY` | Recomendada | Calificación y reseñas de Google en el inicio (se refrescan cada 24 h). Sin ella la sección muestra solo los botones. |
 
-> Mientras `RESEND_FROM` use `onboarding@resend.dev`, Resend solo entrega al correo dueño de la cuenta.
-> Para que los avisos lleguen a otra dirección hay que verificar un dominio en Resend.
+> El dominio karlasbake.com está verificado en Resend (DKIM + SPF). Los avisos salen de
+> `pedidos@karlasbake.com` hacia `ORDER_NOTIFY_EMAIL`, con respuesta directa al correo del cliente.
 
 ## Reseñas de Google
 
