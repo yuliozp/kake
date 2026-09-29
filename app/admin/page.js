@@ -9,13 +9,16 @@ const CAT = [
   ["filling", "Sabor del relleno"],
   ["filling_count", "Cantidad de rellenos"],
   ["delivery", "Envío / recogida"],
+  ["decoration", "Decoración"],
 ];
 const STATUS = [
   ["nuevo", "Nuevo"],
+  ["confirmado", "Confirmado"],
+  ["cancelado", "Cancelado"],
   ["en_preparacion", "En preparación"],
   ["listo", "Listo"],
-  ["entregado", "Entregado"],
-  ["cancelado", "Cancelado"],
+  ["en_entrega", "En entrega"],
+  ["completado", "Completado"],
 ];
 const STATUS_LABEL = Object.fromEntries(STATUS);
 const METHODS = [
@@ -31,13 +34,14 @@ const METHODS = [
 const METHOD_LABEL = Object.fromEntries(METHODS);
 const FILTERS = [
   ["pendientes", "Por entregar"],
+  ["nuevos", "Por confirmar"],
   ["por_cobrar", "Por cobrar"],
-  ["entregados", "Entregados"],
+  ["entregados", "Completados"],
   ["cancelados", "Cancelados"],
   ["todos", "Todos"],
 ];
 
-const emptyOpt = { id: null, category: "size", label: "", description: "", price: 0, image_url: "", active: true };
+const emptyOpt = { id: null, category: "size", label: "", description: "", price: 0, image_url: "", active: true, price_on_request: false };
 const emptyDesign = { id: null, label: "", image_url: "", price: 0, active: true };
 const money = (n) => "$" + Number(n || 0).toFixed(2);
 
@@ -203,7 +207,7 @@ function Orders({ orders, setOrders, flash, onAuthError }) {
 
   const today = localToday();
   const month = today.slice(0, 7);
-  const active = (o) => o.status !== "entregado" && o.status !== "cancelado";
+  const active = (o) => o.status !== "completado" && o.status !== "cancelado";
 
   const stats = useMemo(() => {
     const pending = orders.filter(active);
@@ -218,7 +222,8 @@ function Orders({ orders, setOrders, flash, onAuthError }) {
     let l = orders.filter((o) => {
       if (filter === "pendientes") return active(o);
       if (filter === "por_cobrar") return o.status !== "cancelado" && payInfo(o).balance > 0;
-      if (filter === "entregados") return o.status === "entregado";
+      if (filter === "entregados") return o.status === "completado";
+      if (filter === "nuevos") return o.status === "nuevo";
       if (filter === "cancelados") return o.status === "cancelado";
       return true;
     });
@@ -289,7 +294,9 @@ function addDays(iso, n) {
 
 function OrderCard({ o, open, today, onToggle, onStatus, onSaved, flash, onAuthError }) {
   const pay = payInfo(o);
-  const late = o.delivery_date && o.delivery_date < today && o.status !== "entregado" && o.status !== "cancelado";
+  const late = o.delivery_date && o.delivery_date < today && o.status !== "completado" && o.status !== "cancelado";
+  const needsKarla = o.status === "nuevo" && !o.price_confirmed_at;
+  const waitingCustomer = o.status === "nuevo" && o.price_confirmed_at && !o.customer_confirmed_at;
   const isToday = o.delivery_date === today;
   const detailId = `order-detail-${o.id}`;
   return (
@@ -312,15 +319,24 @@ function OrderCard({ o, open, today, onToggle, onStatus, onSaved, flash, onAuthE
         <div>
           <div className="order-customer">{o.customer_name}</div>
           <div className="note">{[o.size_label, o.cake_flavor, o.filling_flavor].filter(Boolean).join(" · ") || "—"}</div>
+          {needsKarla && <span className="status-flag">{o.price_pending ? `Precio por confirmar: ${o.pending_items}` : "Falta confirmar"}</span>}
+          {waitingCustomer && <span className="status-flag wait">Esperando que el cliente apruebe {money(o.final_total)}</span>}
         </div>
         <div className="order-money">
           <strong>{money(pay.due)}</strong>
           <span className={"pay-badge pay-" + pay.state}>{pay.label}{pay.state === "anticipo" ? ` · debe ${money(pay.balance)}` : ""}</span>
         </div>
       </div>
-      <button className="link order-toggle" aria-expanded={open} aria-controls={detailId} onClick={onToggle}>
-        {open ? "Ocultar detalle" : "Ver detalle y cobro"}
-      </button>
+      <div style={{ display: "flex", gap: 14, alignItems: "center", flexWrap: "wrap" }}>
+        <button className="link order-toggle" aria-expanded={open} aria-controls={detailId} onClick={onToggle}>
+          {open ? "Ocultar detalle" : "Ver detalle y cobro"}
+        </button>
+        {needsKarla && o.karla_path && (
+          <a className="btn small" href={o.karla_path} target="_blank" rel="noreferrer">
+            {o.price_pending ? "Confirmar y poner precio" : "Confirmar pedido"}
+          </a>
+        )}
+      </div>
       {open && (
         <div id={detailId} className="order-detail">
           <div className="detail-grid">
@@ -333,6 +349,9 @@ function OrderCard({ o, open, today, onToggle, onStatus, onSaved, flash, onAuthE
               <div><dt>Rellenos</dt><dd>{o.filling_count || "—"}</dd></div>
               <div><dt>Diseño</dt><dd>{o.design_label || "—"}</dd></div>
               <div><dt>Descripción</dt><dd>{o.design_notes || "—"}</dd></div>
+              {o.decoration_label && <div><dt>Decoración</dt><dd>{o.decoration_label}</dd></div>}
+              {o.decoration_notes && <div><dt>Detalle decoración</dt><dd>{o.decoration_notes}</dd></div>}
+              {o.deposit_amount != null && <div><dt>Anticipo acordado</dt><dd>{money(o.deposit_amount)}</dd></div>}
               <div><dt>Pedido el</dt><dd>{new Date(o.ordered_at).toLocaleString("es-US", { dateStyle: "medium", timeStyle: "short" })}</dd></div>
             </dl>
             {o.has_design_image && (
@@ -342,6 +361,15 @@ function OrderCard({ o, open, today, onToggle, onStatus, onSaved, flash, onAuthE
               </a>
             )}
           </div>
+          {(o.photo_ids || []).length > 0 && (
+            <div className="photo-strip" aria-label="Fotos de decoración del cliente">
+              {o.photo_ids.map((pid, i) => (
+                <a key={pid} href={`/api/orders/${o.id}/photos/${pid}`} target="_blank" rel="noreferrer">
+                  <img src={`/api/orders/${o.id}/photos/${pid}`} alt={`Foto de decoración ${i + 1} del pedido ${o.order_number}`} />
+                </a>
+              ))}
+            </div>
+          )}
           <PaymentForm o={o} onSaved={onSaved} flash={flash} onAuthError={onAuthError} />
         </div>
       )}
@@ -520,7 +548,7 @@ function Catalog({ data, load, flash, onAuthError }) {
                 {items.map((o) => (
                   <tr key={o.id} className={o.active === false ? "muted" : ""}>
                     <td>{o.label || <em className="alert-text">Sin nombre (no se muestra)</em>}</td>
-                    <td>{money(o.price)}</td>
+                    <td>{o.price_on_request ? "A confirmar" : money(o.price)}</td>
                     <td>{o.active === false ? "Oculto" : "Visible"}</td>
                     <td><div className="actions">
                       <button className="btn ghost small" type="button" aria-label={`Editar ${o.label}`} onClick={() => { setOpt({ ...emptyOpt, ...o, price: Number(o.price), image_url: o.image_url || "" }); document.getElementById("opt-form")?.scrollIntoView({ behavior: "smooth" }); }}>Editar</button>
@@ -544,6 +572,8 @@ function Catalog({ data, load, flash, onAuthError }) {
           <div><label htmlFor="o-desc">Descripción</label><input id="o-desc" value={opt.description || ""} onChange={(e) => setOpt({ ...opt, description: e.target.value })} /></div>
           <div><label htmlFor="o-price">Precio (USD)</label><input id="o-price" type="number" min="0" step="0.01" value={opt.price} onChange={(e) => setOpt({ ...opt, price: e.target.value })} /></div>
           <div><label className="check"><input type="checkbox" checked={opt.active !== false} onChange={(e) => setOpt({ ...opt, active: e.target.checked })} /> Visible para clientes</label></div>
+          <div><label className="check"><input type="checkbox" checked={!!opt.price_on_request} onChange={(e) => setOpt({ ...opt, price_on_request: e.target.checked })} /> Precio a confirmar por Karla</label>
+            <span className="hint">El cliente ve "Precio a confirmar" y tú pones el precio al confirmar el pedido.</span></div>
           <div><label htmlFor="o-photo">Foto</label><input id="o-photo" type="file" accept="image/*" onChange={(e) => pickPhoto(e, (url) => setOpt((o) => ({ ...o, image_url: url })), flash)} /></div>
           {opt.image_url && <img className="thumb-img" src={opt.image_url} alt="Vista previa de la foto" />}
           <div className="row">

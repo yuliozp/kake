@@ -1,8 +1,9 @@
 import { NextResponse } from "next/server";
 import { createOrder, findByClientRef, listOrders, priceOrder, rateLimit } from "@/lib/db";
-import { notifyNewOrder } from "@/lib/notify";
+import { notifyCustomerReceived, notifyNewOrder } from "@/lib/notify";
+import { customerUrl, karlaUrl, signLink, siteUrl } from "@/lib/links";
 import { isAdmin } from "@/lib/auth";
-import { clientIp, isISODate, isUploadedImage, sameOrigin, str, todayInTexas } from "@/lib/validate";
+import { clientIp, depositFor, isISODate, isUploadedImage, MAX_DECOR_PHOTOS, MIN_TIME, minDeliveryDate, sameOrigin, str } from "@/lib/validate";
 
 export const dynamic = "force-dynamic";
 
@@ -12,7 +13,12 @@ const fail = (error, status = 400) => NextResponse.json({ error }, { status });
 export async function GET(req) {
   if (!isAdmin(req)) return fail("Sesión vencida. Vuelve a entrar.", 401);
   try {
-    return NextResponse.json({ orders: await listOrders() }, { headers: { "Cache-Control": "no-store" } });
+    const orders = (await listOrders()).map((o) => ({
+      ...o,
+      karla_path: `/confirmar/${o.id}?t=${signLink("karla", o.id)}`,
+      photo_token: signLink("karla", o.id),
+    }));
+    return NextResponse.json({ orders }, { headers: { "Cache-Control": "no-store" } });
   } catch (e) {
     console.error("[orders:list]", e);
     return fail("No se pudieron cargar los pedidos", 500);
@@ -23,7 +29,7 @@ export async function POST(req) {
   if (!sameOrigin(req)) return fail("Origen no permitido", 403);
 
   const raw = await req.text().catch(() => "");
-  if (raw.length > 2_000_000) return fail("El pedido es muy pesado. Prueba con una foto más pequeña.", 413);
+  if (raw.length > 4_200_000) return fail("El pedido es muy pesado. Prueba con una foto más pequeña.", 413);
   let body;
   try {
     body = JSON.parse(raw);
@@ -62,9 +68,15 @@ export async function POST(req) {
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(customer.email)) return fail("El correo no es válido");
   if (customer.phone.replace(/\D/g, "").length < 7) return fail("El teléfono no es válido");
   if (!isISODate(body.deliveryDate)) return fail("Elige una fecha de entrega");
-  if (body.deliveryDate < todayInTexas()) return fail("La fecha de entrega ya pasó. Elige otra.");
+  if (body.deliveryDate < minDeliveryDate()) return fail("Los pedidos se hacen con al menos 2 días de anticipación. Elige otra fecha.");
+  if (!/^\d{2}:\d{2}$/.test(body.deliveryTime || "") || body.deliveryTime < MIN_TIME) {
+    return fail("La hora de entrega debe ser a partir de las 10:00 a. m.");
+  }
   const designImage = body.designImage || "";
   if (designImage && !isUploadedImage(designImage)) return fail("La foto no es válida o es muy pesada. Prueba con otra.");
+  const decorationPhotos = Array.isArray(body.decorationPhotos) ? body.decorationPhotos : [];
+  if (decorationPhotos.length > MAX_DECOR_PHOTOS) return fail(`Puedes enviar hasta ${MAX_DECOR_PHOTOS} fotos de decoración.`);
+  if (decorationPhotos.some((ph) => !isUploadedImage(ph))) return fail("Una de las fotos de decoración no es válida. Prueba con otra.");
 
   const order = {
     customer,
@@ -73,7 +85,7 @@ export async function POST(req) {
     deliveryType: str(body.deliveryType, 120),
     deliveryAddress: str(body.deliveryAddress, 300),
     deliveryDate: body.deliveryDate,
-    deliveryTime: /^\d{2}:\d{2}$/.test(body.deliveryTime || "") ? body.deliveryTime : "",
+    deliveryTime: body.deliveryTime,
     size: str(body.size, 120),
     cakeFlavor: str(body.cakeFlavor, 120),
     fillingFlavor: str(body.fillingFlavor, 120),
@@ -82,22 +94,33 @@ export async function POST(req) {
     designLabel: str(body.designLabel, 120),
     designNotes: str(body.designNotes, 1000),
     designImage,
+    decorationLabel: str(body.decorationLabel, 120),
+    decorationNotes: str(body.decorationNotes, 1000),
+    decorationPhotos,
   };
 
   try {
-    const total = await priceOrder(order);
-    let orderNumber;
+    const { total, pending } = await priceOrder(order);
+    let orderId, orderNumber;
     try {
-      ({ orderNumber } = await createOrder(order, total));
+      ({ orderId, orderNumber } = await createOrder(order, total, pending));
     } catch (e) {
       // Dos envíos simultáneos del mismo formulario: gana el primero.
       const again = clientRef && (await findByClientRef(clientRef).catch(() => null));
       if (again) return NextResponse.json({ orderNumber: again.order_number, total: Number(again.total), duplicate: true });
       throw e;
     }
-    const mail = await notifyNewOrder(orderNumber, order, total);
+    const [mail] = await Promise.all([
+      notifyNewOrder({ orderNumber, order, total, pending, karlaLink: karlaUrl(orderId), adminLink: `${siteUrl()}/admin` }),
+      notifyCustomerReceived({ order, orderNumber, total, pending, link: customerUrl(orderId) }),
+    ]);
     if (!mail.ok) console.warn("[orders:notify] no se envió el aviso", orderNumber, mail.error || mail.via);
-    return NextResponse.json({ orderNumber, total, emailed: mail.ok });
+    return NextResponse.json({
+      orderNumber, total, pending, pricePending: pending.length > 0,
+      deposit: pending.length ? null : depositFor(total),
+      trackPath: `/mi-pedido/${orderId}?t=${signLink("cliente", orderId)}`,
+      emailed: mail.ok,
+    });
   } catch (e) {
     console.error("[orders:create]", e);
     const msg = String(e?.message || "");

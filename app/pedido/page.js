@@ -25,6 +25,10 @@ function prettyTime(hhmm, lang) {
   return new Date(2000, 0, 1, h, m).toLocaleTimeString(lang === "en" ? "en-US" : "es-US", { hour: "numeric", minute: "2-digit" });
 }
 
+const MIN_DAYS = 2;       // entrega con al menos 2 días de anticipación
+const MIN_TIME = "10:00"; // desde las 10:00 a. m.
+const MAX_PHOTOS = 4;
+
 const isShipping =(label) => /env[ií]o|domicilio|delivery/i.test(label || "");
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const money = (n) => "$" + Number(n || 0).toFixed(2);
@@ -42,7 +46,7 @@ function OptionGrid({ items, selected, onPick, L }) {
             {img && <img src={img} alt="" loading="lazy" />}
             <span className="meta">
               <strong>{L(o.label)}</strong>
-              <span className="price">{Number(o.price) > 0 ? "+ " + money(o.price) : t.included}</span>
+              <span className="price">{o.price_on_request ? t.priceTbd : Number(o.price) > 0 ? "+ " + money(o.price) : t.included}</span>
             </span>
           </button>
         );
@@ -53,10 +57,11 @@ function OptionGrid({ items, selected, onPick, L }) {
 
 const EMPTY = {
   name: "", phone: "", email: "", address: "", smsOptIn: false,
-  deliveryDate: localISO(1), deliveryTime: "15:00",
+  deliveryDate: localISO(MIN_DAYS), deliveryTime: MIN_TIME,
   deliveryType: "", deliveryAddress: "",
   size: "", cakeFlavor: "", fillingFlavor: "", fillingCount: "",
   designId: null, designLabel: "", designImage: "", designPrice: 0, uploadPreview: "", designNotes: "",
+  decorationLabel: "", decorationNotes: "", decorationPhotos: [],
 };
 
 export default function PedidoPage() {
@@ -94,25 +99,38 @@ export default function PedidoPage() {
     if (has("cake_flavor")) s.push({ id: "sabor" });
     if (has("filling")) s.push({ id: "relleno" });
     if (has("filling_count")) s.push({ id: "capas" });
-    s.push({ id: "diseno" }, { id: "resumen" });
+    s.push({ id: "diseno" });
+    if (has("decoration")) s.push({ id: "decoracion" });
+    s.push({ id: "resumen" });
     return s;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [catalog]);
 
-  const total = useMemo(() => {
+  // Total conocido + lo que queda "por confirmar" (decoración premium, envío a domicilio).
+  const { total, pending } = useMemo(() => {
     let n = 0;
-    const add = (cat, label) => { const o = find(cat, label); if (o) n += Number(o.price || 0); };
+    const pend = [];
+    const add = (cat, label) => {
+      const o = find(cat, label);
+      if (!o) return;
+      if (o.price_on_request) pend.push(L(o.label));
+      else n += Number(o.price || 0);
+    };
     add("size", form.size);
     add("cake_flavor", form.cakeFlavor);
     add("filling", form.fillingFlavor);
     add("filling_count", form.fillingCount);
     add("delivery", form.deliveryType);
+    add("decoration", form.decorationLabel);
     n += Number(form.designPrice || 0);
-    return n;
+    return { total: n, pending: pend };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [form, catalog]);
+  }, [form, catalog, lang]);
+  const decoOption = find("decoration", form.decorationLabel);
+  const isPremiumDeco = !!decoOption?.price_on_request;
+  const totalText = pending.length ? `${money(total)} + ${t.toConfirm}` : money(total);
 
-  const previewImg = form.uploadPreview || form.designImage || find("size", form.size)?.image || IMAGES.hero;
+  const previewImg = form.decorationPhotos[0] || form.uploadPreview || form.designImage || find("size", form.size)?.image || IMAGES.hero;
   const current = STEPS[Math.min(step, STEPS.length - 1)];
 
   // Al cambiar de paso, el foco va al título para que el lector de pantalla lo anuncie.
@@ -127,7 +145,11 @@ export default function PedidoPage() {
       if (!form.name.trim() || !form.phone.trim() || !form.email.trim()) return t.needClient;
       if (!EMAIL_RE.test(form.email.trim())) return t.badEmail;
     }
-    if (id === "fecha" && !form.deliveryDate) return t.needDate;
+    if (id === "fecha") {
+      if (!form.deliveryDate) return t.needDate;
+      if (form.deliveryDate < localISO(MIN_DAYS)) return t.badDate2;
+    }
+    if (id === "hora" && (!form.deliveryTime || form.deliveryTime < MIN_TIME)) return t.badTime;
     if (id === "envio") {
       if (!form.deliveryType) return t.needDelivery;
       if (isShipping(form.deliveryType) && !(form.deliveryAddress || form.address).trim()) return t.needAddress;
@@ -136,6 +158,10 @@ export default function PedidoPage() {
     if (id === "sabor" && !form.cakeFlavor) return t.needFlavor;
     if (id === "relleno" && !form.fillingFlavor) return t.needFilling;
     if (id === "diseno" && !form.designLabel && !form.designNotes.trim() && !form.uploadPreview) return t.needDesign;
+    if (id === "decoracion") {
+      if (!form.decorationLabel) return t.needDeco;
+      if (isPremiumDeco && !form.decorationPhotos.length && !form.decorationNotes.trim()) return t.needDecoPhotos;
+    }
     return "";
   }
 
@@ -165,6 +191,22 @@ export default function PedidoPage() {
     }
   }
 
+  async function onDecoUpload(e) {
+    const files = Array.from(e.target.files || []);
+    e.target.value = "";
+    if (!files.length) return;
+    const room = MAX_PHOTOS - form.decorationPhotos.length;
+    if (room <= 0) return setStatus(t.maxPhotos);
+    try {
+      const urls = [];
+      for (const f of files.slice(0, room)) urls.push(await fileToDataUrl(f, 1000, 0.78));
+      setForm((f) => ({ ...f, decorationPhotos: [...f.decorationPhotos, ...urls] }));
+      setStatus(files.length > room ? t.maxPhotos : "");
+    } catch {
+      setStatus(t.badPhoto);
+    }
+  }
+
   async function submit() {
     for (const s of STEPS) {
       const err = validate(s.id);
@@ -187,11 +229,14 @@ export default function PedidoPage() {
           designLabel: form.designLabel || (form.uploadPreview || form.designNotes ? t.ownDesign : ""),
           designNotes: form.designNotes,
           designImage: form.uploadPreview,
+          decorationLabel: form.decorationLabel,
+          decorationNotes: isPremiumDeco ? form.decorationNotes : "",
+          decorationPhotos: isPremiumDeco ? form.decorationPhotos : [],
         }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || t.errorGeneric);
-      setDone({ orderNumber: data.orderNumber, total: data.total ?? total });
+      setDone({ orderNumber: data.orderNumber, total: data.total ?? total, pending: data.pending || [], deposit: data.deposit, trackPath: data.trackPath });
     } catch (err) {
       setStatus(err.message || t.errorGeneric);
     } finally {
@@ -210,6 +255,9 @@ export default function PedidoPage() {
     has("filling_count") && ["capas", t.steps.capas, L(form.fillingCount)],
     ["diseno", t.steps.diseno, form.designLabel || (form.uploadPreview ? t.ownDesign : t.noDesign)],
     form.designNotes && ["diseno", t.notes, form.designNotes],
+    has("decoration") && ["decoracion", t.steps.decoracion, L(form.decorationLabel) + (isPremiumDeco ? ` (${t.priceTbd})` : "")],
+    isPremiumDeco && form.decorationNotes && ["decoracion", t.notes, form.decorationNotes],
+    isPremiumDeco && form.decorationPhotos.length > 0 && ["decoracion", lang === "en" ? "Photos" : "Fotos", `${form.decorationPhotos.length}`],
     ["cliente", t.promotions, form.smsOptIn ? t.smsYes : t.smsNo],
   ].filter(Boolean);
 
@@ -221,8 +269,13 @@ export default function PedidoPage() {
           <h1 className="done-title">{t.doneTitle}</h1>
           <p className="note">{t.orderNo}</p>
           <p className="ticket-no">{done.orderNumber}</p>
-          <p className="total">{t.total}: {money(done.total)}</p>
-          <p>{t.doneBody}</p>
+          <p className="total">{t.total}: {done.pending.length ? `${money(done.total)} + ${t.toConfirm}` : money(done.total)}</p>
+          {done.pending.length ? (
+            <p>{t.doneBodyPending}</p>
+          ) : (
+            <p>{t.doneBodyDeposit} <strong>{money(done.deposit)}</strong>.</p>
+          )}
+          {done.trackPath && <p><a href={done.trackPath}>{t.trackOrder}</a></p>}
           <div className="row center">
             <a className="btn" href="/">{t.backHome}</a>
             <button className="btn ghost" onClick={() => { setForm(EMPTY); setStep(0); setDone(null); setClientRef(newRef()); }}>{t.newOrder}</button>
@@ -269,10 +322,16 @@ export default function PedidoPage() {
               </>
             )}
             {current.id === "fecha" && (
-              <input type="date" aria-label={t.steps.fecha} min={localISO(1)} value={form.deliveryDate} onChange={(e) => set({ deliveryDate: e.target.value })} />
+              <>
+                <input type="date" aria-label={t.steps.fecha} min={localISO(MIN_DAYS)} value={form.deliveryDate} onChange={(e) => set({ deliveryDate: e.target.value })} />
+                <p className="hint">{t.badDate2}</p>
+              </>
             )}
             {current.id === "hora" && (
-              <input type="time" aria-label={t.steps.hora} step={900} value={form.deliveryTime} onChange={(e) => set({ deliveryTime: e.target.value })} />
+              <>
+                <input type="time" aria-label={t.steps.hora} step={900} min={MIN_TIME} value={form.deliveryTime} onChange={(e) => set({ deliveryTime: e.target.value })} />
+                <p className="hint">{t.badTime}</p>
+              </>
             )}
             {current.id === "envio" && (
               <>
@@ -313,6 +372,34 @@ export default function PedidoPage() {
                 <textarea id="f-notes" rows={3} value={form.designNotes} onChange={(e) => set({ designNotes: e.target.value })} />
               </>
             )}
+            {current.id === "decoracion" && (
+              <>
+                <p className="note">{t.decoHint}</p>
+                <OptionGrid items={by("decoration")} selected={form.decorationLabel} L={L} onPick={(o) => set({ decorationLabel: o.label })} />
+                {isPremiumDeco && (
+                  <>
+                    <label htmlFor="f-deco-photos">{t.decoPhotos}</label>
+                    <input id="f-deco-photos" type="file" accept="image/*" multiple onChange={onDecoUpload}
+                      disabled={form.decorationPhotos.length >= MAX_PHOTOS} />
+                    {form.decorationPhotos.length > 0 && (
+                      <div className="photo-strip">
+                        {form.decorationPhotos.map((src, i) => (
+                          <div key={i} className="photo-item">
+                            <img src={src} alt="" />
+                            <button type="button" className="btn ghost small"
+                              onClick={() => setForm((f) => ({ ...f, decorationPhotos: f.decorationPhotos.filter((_, j) => j !== i) }))}>
+                              {t.removePhoto}
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    <label htmlFor="f-deco-notes">{t.decoNotes}</label>
+                    <textarea id="f-deco-notes" rows={3} value={form.decorationNotes} onChange={(e) => set({ decorationNotes: e.target.value })} />
+                  </>
+                )}
+              </>
+            )}
             {current.id === "resumen" && (
               <>
                 <dl className="summary">
@@ -324,9 +411,11 @@ export default function PedidoPage() {
                     </div>
                   ))}
                 </dl>
-                <p className="note">{t.priceNote}</p>
+                {pending.length > 0
+                  ? <p className="alert" style={{ background: "#fdf1dc", color: "#7a4d00" }}>{t.pendingNote.replace("{items}", pending.join(", "))}</p>
+                  : <p className="note">{t.priceNote}</p>}
                 <button className="btn wide" disabled={saving} onClick={submit}>
-                  {saving ? t.saving : `${t.confirm} · ${money(total)}`}
+                  {saving ? t.saving : pending.length ? `${t.confirmPending} · ${totalText}` : `${t.confirm} · ${money(total)}`}
                 </button>
               </>
             )}
@@ -341,6 +430,7 @@ export default function PedidoPage() {
             <img src={previewImg} alt="" />
             <p className="note" style={{ margin: "10px 0 2px" }}>{t.total}</p>
             <div className="total">{money(total)}</div>
+            {pending.length > 0 && <p className="note" style={{ margin: 0 }}>+ {t.toConfirm}</p>}
           </aside>
         </div>
       </div>

@@ -285,3 +285,16 @@ a.review-author:hover { color: var(--pink-strong); text-decoration: underline; }
   .reviews-actions .btn { flex: 1 1 100%; }
   .nav-links { gap: 12px; font-size: 13.5px; }
 }
+
+/* Fotos de decoración y de confirmación */
+.photo-strip { display: flex; flex-wrap: wrap; gap: 10px; margin: 12px 0; }
+.photo-strip img { width: 110px; height: 110px; object-fit: cover; border-radius: 12px; display: block; border: 1px solid #f3d5de; }
+.photo-item { display: grid; gap: 6px; justify-items: center; }
+.status-flag { display: inline-block; font-size: 12px; font-weight: 800; padding: 3px 10px; border-radius: 999px; background: #fdf1dc; color: #7a4d00; margin-top: 4px; }
+.status-flag.wait { background: #e3eefb; color: #1d4f8c; }
+.order-card.status-confirmado { border-left-color: #6b46c1; }
+.order-card.status-en_entrega { border-left-color: #0f766e; }
+.order-card.status-completado { border-left-color: var(--ok); }
+.st-confirmado { background: #efe7fb; border-color: #cdb9f1; color: #4c2a92; }
+.st-en_entrega { background: #e0f2f1; border-color: #9fd6d1; color: #0b5f58; }
+.st-completado { background: #e3f3eb; border-color: #a8d8bf; color: #185c43; }

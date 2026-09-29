@@ -1,0 +1,9 @@
+import CustomerOrder from "./CustomerOrder";
+
+export const metadata = { title: "Mi pedido · My order", robots: { index: false, follow: false } };
+
+export default async function Page({ params, searchParams }) {
+  const { id } = await params;
+  const { t } = await searchParams;
+  return <CustomerOrder id={id} token={typeof t === "string" ? t : ""} />;
+}

@@ -1,15 +1,18 @@
 import { NextResponse } from "next/server";
 import { getOrderImage } from "@/lib/db";
 import { isAdmin } from "@/lib/auth";
+import { verifyLink } from "@/lib/links";
 
 export const dynamic = "force-dynamic";
 
 // Foto de referencia del cliente o evidencia de pago. Solo con sesión admin.
 export async function GET(req, { params }) {
-  if (!isAdmin(req)) return new NextResponse("No autorizado", { status: 401 });
   const { id } = await params;
   const kind = req.nextUrl.searchParams.get("kind") === "proof" ? "proof" : "design";
   if (!/^\d+$/.test(id)) return new NextResponse("Not found", { status: 404 });
+  // La foto de referencia del diseño también se ve desde el enlace de confirmación de Karla.
+  const viaKarlaLink = kind === "design" && verifyLink("karla", Number(id), req.nextUrl.searchParams.get("t"));
+  if (!isAdmin(req) && !viaKarlaLink) return new NextResponse("No autorizado", { status: 401 });
   try {
     const src = await getOrderImage(Number(id), kind);
     const m = /^data:(image\/(?:jpeg|png|webp));base64,(.+)$/.exec(src || "");
