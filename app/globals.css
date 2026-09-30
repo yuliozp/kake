@@ -298,3 +298,6 @@ a.review-author:hover { color: var(--pink-strong); text-decoration: underline; }
 .st-confirmado { background: #efe7fb; border-color: #cdb9f1; color: #4c2a92; }
 .st-en_entrega { background: #e0f2f1; border-color: #9fd6d1; color: #0b5f58; }
 .st-completado { background: #e3f3eb; border-color: #a8d8bf; color: #185c43; }
+
+.pay-box { margin-top: 12px; padding: 14px; border: 1px solid #f1d3de; border-radius: 12px; background: #fff8fb; }
+.pay-box p { margin: 6px 0; }

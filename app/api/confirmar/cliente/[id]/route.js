@@ -3,6 +3,8 @@ import { customerConfirm, getOrderSummary } from "@/lib/db";
 import { customerUrl, verifyLink, siteUrl } from "@/lib/links";
 import { depositFor, sameOrigin } from "@/lib/validate";
 import { notifyCustomerConfirmed, notifyKarlaCustomerConfirmed } from "@/lib/notify";
+import { PAYABLE, depositInfo } from "@/lib/payments";
+import { stripeEnabled, stripeTestMode } from "@/lib/stripe";
 
 export const dynamic = "force-dynamic";
 const fail = (error, status = 400) => NextResponse.json({ error }, { status, headers: { "Cache-Control": "no-store" } });
@@ -20,6 +22,7 @@ async function load(params, token) {
 // Lo que ve el cliente: sin datos internos.
 function view(o) {
   const finalTotal = o.final_total != null ? Number(o.final_total) : null;
+  const { paid, due } = depositInfo(o);
   return {
     order_number: o.order_number, customer_name: o.customer_name, lang: o.lang, status: o.status,
     delivery_date: o.delivery_date, delivery_time: o.delivery_time, delivery_type: o.delivery_type,
@@ -29,6 +32,8 @@ function view(o) {
     estimate: Number(o.total || 0), final_total: finalTotal,
     deposit: o.deposit_amount != null ? Number(o.deposit_amount) : null,
     price_confirmed: !!o.price_confirmed_at, customer_confirmed: !!o.customer_confirmed_at,
+    paid_amount: paid, deposit_due: due,
+    can_pay: stripeEnabled() && PAYABLE.includes(o.status) && due > 0, test_mode: stripeTestMode(),
   };
 }
 

@@ -15,7 +15,12 @@ const TXT = {
     total: "Total", deposit: "Anticipo (50 %)", confirm: "Confirmar mi pedido", confirming: "Confirmando…",
     confirmNote: "Al confirmar reservamos tu fecha. El siguiente paso es el pago del anticipo.",
     confirmed: "¡Tu pedido está confirmado!", nextStep: "Siguiente paso: pago del anticipo de",
-    payNote: "Karla te contactará con las opciones de pago. Pronto podrás pagar en línea desde aquí.",
+    payNote: "Karla te contactará con las opciones de pago.",
+    payBtn: "Pagar anticipo", paying: "Abriendo el pago…", paySecure: "Pago seguro con Stripe: tarjeta, Apple Pay o Google Pay.",
+    verifying: "Confirmando tu pago…", paidOk: "¡Pago recibido! Tu fecha queda reservada.", payCancelled: "No se completó el pago. Puedes intentarlo de nuevo cuando quieras.",
+    payPending: "Tu pago se está procesando. Te avisaremos por correo cuando se confirme.",
+    depositPaid: "Anticipo pagado", paid: "Pagado", balance: "Saldo pendiente", balanceNote: "El saldo se paga al recibir tu pastel.",
+    testMode: "Modo de prueba: usa la tarjeta 4242 4242 4242 4242, cualquier fecha futura y cualquier CVC.",
     progress: "Tu pedido está en marcha", cancelled: "Este pedido fue cancelado. Si tienes dudas, escríbenos.",
     help: "¿Preguntas? WhatsApp +1 (409) 332-5768",
     status: { confirmado: "Confirmado", en_preparacion: "En preparación", listo: "Listo", en_entrega: "En entrega", completado: "Completado" },
@@ -30,7 +35,12 @@ const TXT = {
     total: "Total", deposit: "Deposit (50%)", confirm: "Confirm my order", confirming: "Confirming…",
     confirmNote: "Confirming reserves your date. The next step is paying the deposit.",
     confirmed: "Your order is confirmed!", nextStep: "Next step: deposit payment of",
-    payNote: "Karla will contact you with payment options. Online payment is coming soon.",
+    payNote: "Karla will contact you with payment options.",
+    payBtn: "Pay deposit", paying: "Opening payment…", paySecure: "Secure payment with Stripe: card, Apple Pay or Google Pay.",
+    verifying: "Confirming your payment…", paidOk: "Payment received! Your date is reserved.", payCancelled: "The payment wasn't completed. You can try again anytime.",
+    payPending: "Your payment is processing. We'll email you once it's confirmed.",
+    depositPaid: "Deposit paid", paid: "Paid", balance: "Balance due", balanceNote: "The balance is paid when you receive your cake.",
+    testMode: "Test mode: use card 4242 4242 4242 4242, any future date and any CVC.",
     progress: "Your order is in progress", cancelled: "This order was cancelled. If you have questions, contact us.",
     help: "Questions? WhatsApp +1 (409) 332-5768",
     status: { confirmado: "Confirmed", en_preparacion: "Being prepared", listo: "Ready", en_entrega: "Out for delivery", completado: "Completed" },
@@ -49,21 +59,74 @@ function fmtTime(v, lang) {
 }
 
 // Página del cliente: estado de su pedido y botón para aprobar el precio final.
-export default function CustomerOrder({ id, token }) {
+export default function CustomerOrder({ id, token, paidSession = "", cancelled = false }) {
   const [o, setO] = useState(null);
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
+  const [paying, setPaying] = useState(false);
+  // "", "verifying", "ok", "pending", "cancelled"
+  const [payMsg, setPayMsg] = useState(paidSession ? "verifying" : cancelled ? "cancelled" : "");
+
+  async function load() {
+    const r = await fetch(`/api/confirmar/cliente/${id}?t=${encodeURIComponent(token)}`, { cache: "no-store" });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(j.error || "Error");
+    setO(j);
+    if (j.lang === "en") document.documentElement.lang = "en";
+    return j;
+  }
 
   useEffect(() => {
-    fetch(`/api/confirmar/cliente/${id}?t=${encodeURIComponent(token)}`, { cache: "no-store" })
-      .then(async (r) => {
-        const j = await r.json().catch(() => ({}));
-        if (!r.ok) throw new Error(j.error || "Error");
-        setO(j);
-        if (j.lang === "en") document.documentElement.lang = "en";
-      })
-      .catch((e) => setError(e.message));
+    let alive = true;
+    (async () => {
+      try {
+        if (paidSession) {
+          // Volvió de Stripe: confirmamos el pago con Stripe antes de mostrar el pedido.
+          let paid = false;
+          for (let i = 0; i < 4 && !paid && alive; i++) {
+            const r = await fetch(`/api/pagar/${id}/verificar`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ t: token, session_id: paidSession }),
+            });
+            const j = await r.json().catch(() => ({}));
+            paid = r.ok && j.paid;
+            if (!paid) await new Promise((res) => setTimeout(res, 1500));
+          }
+          if (alive) setPayMsg(paid ? "ok" : "pending");
+        }
+        if (paidSession || cancelled) {
+          const url = new URL(window.location.href);
+          url.searchParams.delete("pagado");
+          url.searchParams.delete("cancelado");
+          window.history.replaceState(null, "", url.toString());
+        }
+        if (alive) await load();
+      } catch (e) {
+        if (alive) setError(e.message);
+      }
+    })();
+    return () => { alive = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id, token]);
+
+  async function pay() {
+    setPaying(true);
+    setError("");
+    try {
+      const r = await fetch(`/api/pagar/${id}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ t: token }),
+      });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok || !j.url) throw new Error(j.error || "Error");
+      window.location.assign(j.url);
+    } catch (e) {
+      setError(e.message);
+      setPaying(false);
+    }
+  }
 
   const lang = o?.lang === "en" ? "en" : "es";
   const t = TXT[lang];
@@ -88,10 +151,40 @@ export default function CustomerOrder({ id, token }) {
   }
 
   if (error && !o) return <main id="contenido" className="wrap narrow"><div className="card"><Logo /><p className="alert" role="alert">{error}</p></div></main>;
-  if (!o) return <main id="contenido" className="wrap narrow"><p className="note" role="status">{TXT.es.loading}</p></main>;
+  if (!o) return <main id="contenido" className="wrap narrow"><p className="note" role="status">{payMsg === "verifying" ? TXT.es.verifying : TXT.es.loading}</p></main>;
 
   const awaitingMe = o.status === "nuevo" && o.price_confirmed && !o.customer_confirmed;
-  const inProgress = !["nuevo", "cancelado"].includes(o.status);
+  const depositPaid = o.deposit != null && o.deposit_due === 0;
+  const balance = Math.max(0, Number(o.final_total || 0) - Number(o.paid_amount || 0));
+
+  const payment = (
+    <div className="pay-box">
+      {payMsg === "ok" && <p className="ok" role="status">{t.paidOk}</p>}
+      {payMsg === "pending" && <p className="note" role="status">{t.payPending}</p>}
+      {payMsg === "cancelled" && !depositPaid && <p className="note" role="status">{t.payCancelled}</p>}
+      {depositPaid ? (
+        <>
+          <p><strong>✓ {t.depositPaid}</strong> · {t.paid}: {money(o.paid_amount)}</p>
+          {balance > 0 && <p className="note">{t.balance}: <strong>{money(balance)}</strong>. {t.balanceNote}</p>}
+        </>
+      ) : o.can_pay ? (
+        <>
+          {Number(o.paid_amount) > 0 && <p className="note">{t.paid}: {money(o.paid_amount)}</p>}
+          {error && <p className="alert" role="alert">{error}</p>}
+          <button className="btn wide" onClick={pay} disabled={paying}>
+            {paying ? t.paying : `${t.payBtn} ${money(o.deposit_due)}`}
+          </button>
+          <p className="note">🔒 {t.paySecure}</p>
+          {o.test_mode && <p className="note" style={{ color: "#7a4d00" }}>{t.testMode}</p>}
+        </>
+      ) : (
+        <>
+          <p>{t.nextStep} <strong>{money(o.deposit)}</strong>.</p>
+          <p className="note">{t.payNote}</p>
+        </>
+      )}
+    </div>
+  );
 
   return (
     <main id="contenido" className="wrap narrow">
@@ -131,13 +224,7 @@ export default function CustomerOrder({ id, token }) {
             <>
               <p className="ok">{o.status === "confirmado" ? t.confirmed : `${t.progress}: ${t.status[o.status] || o.status}`}</p>
               <p className="total">{t.total}: {money(o.final_total)}</p>
-              {o.status === "confirmado" && (
-                <>
-                  <p>{t.nextStep} <strong>{money(o.deposit)}</strong>.</p>
-                  <p className="note">{t.payNote}</p>
-                </>
-              )}
-              {inProgress && o.status !== "confirmado" && <p className="note">{t.deposit}: {money(o.deposit)}</p>}
+              {o.status === "completado" ? null : o.deposit != null && payment}
             </>
           )}
         </div>

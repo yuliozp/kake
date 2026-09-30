@@ -4,6 +4,13 @@ export const metadata = { title: "Mi pedido · My order", robots: { index: false
 
 export default async function Page({ params, searchParams }) {
   const { id } = await params;
-  const { t } = await searchParams;
-  return <CustomerOrder id={id} token={typeof t === "string" ? t : ""} />;
+  const { t, pagado, cancelado } = await searchParams;
+  return (
+    <CustomerOrder
+      id={id}
+      token={typeof t === "string" ? t : ""}
+      paidSession={typeof pagado === "string" ? pagado : ""}
+      cancelled={cancelado === "1"}
+    />
+  );
 }
