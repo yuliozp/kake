@@ -13,9 +13,10 @@ const TXT = {
     reviewing: "Karla está revisando tu pedido. Te enviaremos el precio final por correo para que lo apruebes.",
     reviewingSimple: "Karla está revisando tu pedido y te lo confirmará por correo.",
     pendingItems: "Por confirmar", estimate: "Subtotal estimado",
-    priceReady: "Karla confirmó el precio de tu pedido. Si estás de acuerdo, confírmalo:",
+    priceReady: "Karla confirmó el costo pendiente. Este es el total de tu pedido:",
     total: "Total", deposit: "Anticipo (50 %)", confirm: "Confirmar mi pedido", confirming: "Confirmando…",
-    confirmNote: "Al confirmar reservamos tu fecha. El siguiente paso es el pago del anticipo.",
+    confirmPay: "Confirmar y pagar anticipo",
+    confirmNote: "Al confirmar reservamos tu fecha y pasas a la página de pago del anticipo.",
     confirmed: "¡Tu pedido está confirmado!", nextStep: "Siguiente paso: pago del anticipo de",
     payNote: "Karla te contactará con las opciones de pago.",
     payBtn: "Pagar anticipo", paying: "Abriendo el pago…", paySecure: "Pago seguro con Stripe: tarjeta, Apple Pay o Google Pay.",
@@ -35,9 +36,10 @@ const TXT = {
     reviewing: "Karla is reviewing your order. We'll email you the final price for your approval.",
     reviewingSimple: "Karla is reviewing your order and will confirm it by email.",
     pendingItems: "To be confirmed", estimate: "Estimated subtotal",
-    priceReady: "Karla confirmed the price of your order. If you agree, please confirm:",
+    priceReady: "Karla confirmed the pending cost. This is your order total:",
     total: "Total", deposit: "Deposit (50%)", confirm: "Confirm my order", confirming: "Confirming…",
-    confirmNote: "Confirming reserves your date. The next step is paying the deposit.",
+    confirmPay: "Confirm and pay deposit",
+    confirmNote: "Confirming reserves your date and takes you to the deposit payment page.",
     confirmed: "Your order is confirmed!", nextStep: "Next step: deposit payment of",
     payNote: "Karla will contact you with payment options.",
     payBtn: "Pay deposit", paying: "Opening payment…", paySecure: "Secure payment with Stripe: card, Apple Pay or Google Pay.",
@@ -148,6 +150,8 @@ export default function CustomerOrder({ id, token, paidSession = "", cancelled =
       const j = await r.json().catch(() => ({}));
       if (!r.ok) throw new Error(j.error || "Error");
       setO((prev) => ({ ...prev, ...j }));
+      // Confirmado: se pasa directo a la página de pago del anticipo.
+      if (j.can_pay) { await pay(); return; }
     } catch (e) {
       setError(e.message);
     } finally {
@@ -231,7 +235,9 @@ export default function CustomerOrder({ id, token, paidSession = "", cancelled =
               <p className="total">{t.total}: {money(o.final_total)}</p>
               <p>{t.deposit}: <strong>{money(o.deposit)}</strong></p>
               {error && <p className="alert" role="alert">{error}</p>}
-              <button className="btn wide" onClick={confirm} disabled={saving}>{saving ? t.confirming : t.confirm}</button>
+              <button className="btn wide" onClick={confirm} disabled={saving || paying}>
+                {saving || paying ? t.confirming : o.pay_online ? `${t.confirmPay} ${money(o.deposit)}` : t.confirm}
+              </button>
               <p className="note">{t.confirmNote}</p>
             </>
           ) : (

@@ -36,6 +36,7 @@ function view(o) {
     price_confirmed: !!o.price_confirmed_at, customer_confirmed: !!o.customer_confirmed_at,
     paid_amount: paid, deposit_due: due,
     can_pay: stripeEnabled() && PAYABLE.includes(o.status) && due > 0, test_mode: stripeTestMode(),
+    pay_online: stripeEnabled(),
   };
 }
 

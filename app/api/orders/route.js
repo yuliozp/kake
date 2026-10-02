@@ -13,7 +13,7 @@ const fail = (error, status = 400) => NextResponse.json({ error }, { status });
 const duplicate = (o) => NextResponse.json({
   orderNumber: o.order_number, total: Number(o.total), duplicate: true, pending: [],
   confirmed: o.status === "confirmado",
-  ...(o.id ? { trackPath: `/mi-pedido/${o.id}?t=${signLink("cliente", o.id)}` } : {}),
+  ...(o.id ? { trackPath: `/mi-pedido/${o.id}?t=${signLink("cliente", o.id)}`, id: o.id, t: signLink("cliente", o.id) } : {}),
 });
 
 // Solo el panel admin puede ver los pedidos (contienen datos de clientes).
@@ -151,6 +151,8 @@ export async function POST(req) {
       orderNumber, total, pending, pricePending: pending.length > 0, confirmed,
       deposit: pending.length ? null : depositFor(total),
       trackPath: `/mi-pedido/${orderId}?t=${signLink("cliente", orderId)}`,
+      // Para pasar directo al pago del anticipo cuando el pedido queda confirmado.
+      id: orderId, t: signLink("cliente", orderId),
       emailed: mail.ok,
     });
   } catch (e) {

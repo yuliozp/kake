@@ -340,3 +340,14 @@ a.review-author:hover { color: var(--pink-strong); text-decoration: underline; }
 .site-photo .fields { display: grid; gap: 6px; }
 .site-photo .actions { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; margin-top: 4px; }
 .cake-admin-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 14px; margin-top: 18px; }
+
+/* Pantalla final del pedido: total y anticipo */
+.two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.totals { margin: 14px 0 6px; padding: 12px 16px; border: 1px solid #f1d3de; border-radius: 14px; background: #fff8fb; }
+.totals > div { display: flex; justify-content: space-between; gap: 12px; padding: 5px 0; }
+.totals dt { color: var(--muted); }
+.totals dd { margin: 0; font-weight: 800; }
+.totals .grand dt, .totals .grand dd { font-size: 19px; color: var(--chocolate); font-weight: 900; }
+.totals .grand dd { color: var(--pink-strong); }
+.totals .tbd { color: #7a4d00; font-weight: 700; }
+@media (max-width: 480px) { .two-col { grid-template-columns: 1fr; } }
