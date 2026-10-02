@@ -43,6 +43,24 @@ const FILTERS = [
 
 const emptyOpt = { id: null, category: "size", label: "", description: "", price: 0, image_url: "", active: true, price_on_request: false };
 const emptyDesign = { id: null, label: "", image_url: "", price: 0, active: true };
+const emptyCake = { id: null, name: "", price: "", portions: "", size: "", frosting: "", description: "", optionsText: "", image_url: "", active: true };
+const SECTIONS = [
+  ["portada", "Portada (foto principal)", "Se muestra la primera foto visible, arriba de todo."],
+  ["novedades", "Novedades", "Las fotos visibles salen en este orden."],
+  ["talento", "Nuestro talento", "Las fotos visibles salen en este orden."],
+];
+
+// Personalizaciones: una por línea, "Color: Rosa, Azul, Blanco".
+function parseOptions(text) {
+  return String(text || "").split("\n").map((line) => {
+    const i = line.indexOf(":");
+    if (i < 0) return null;
+    const name = line.slice(0, i).trim();
+    const choices = line.slice(i + 1).split(",").map((x) => x.trim()).filter(Boolean);
+    return name && choices.length ? { name, choices } : null;
+  }).filter(Boolean);
+}
+const optionsToText = (o) => (o || []).map((g) => `${g.name}: ${g.choices.join(", ")}`).join("\n");
 const money = (n) => "$" + Number(n || 0).toFixed(2);
 
 function localToday() {
@@ -175,7 +193,7 @@ export default function AdminPage() {
       <div className="admin-bar card">
         <Logo size={44} />
         <div className="tabs" role="tablist" aria-label="Secciones del panel">
-          {[["pedidos", `Pedidos (${orders.length})`], ["catalogo", "Catálogo"], ["disenos", "Diseños"]].map(([id, name]) => (
+          {[["pedidos", `Pedidos (${orders.length})`], ["pasteles", "Pasteles"], ["catalogo", "Opciones y envío"], ["disenos", "Diseños"], ["web", "Personalizar web"]].map(([id, name]) => (
             <button key={id} role="tab" id={"tab-" + id} aria-controls={"panel-" + id} aria-selected={tab === id}
               className={tab === id ? "on" : ""} onClick={() => setTab(id)}>{name}</button>
           ))}
@@ -191,6 +209,8 @@ export default function AdminPage() {
 
       <section role="tabpanel" id={"panel-" + tab} aria-labelledby={"tab-" + tab}>
         {tab === "pedidos" && <Orders orders={orders} setOrders={setOrders} flash={flash} onAuthError={onAuthError} />}
+        {tab === "pasteles" && <Cakes data={data} load={load} flash={flash} onAuthError={onAuthError} />}
+        {tab === "web" && <SiteEditor data={data} load={load} flash={flash} onAuthError={onAuthError} />}
         {tab === "catalogo" && <Catalog data={data} load={load} flash={flash} onAuthError={onAuthError} />}
         {tab === "disenos" && <Designs data={data} load={load} flash={flash} onAuthError={onAuthError} />}
       </section>
@@ -318,7 +338,7 @@ function OrderCard({ o, open, today, onToggle, onStatus, onSaved, flash, onAuthE
       <div className="order-mid">
         <div>
           <div className="order-customer">{o.customer_name}</div>
-          <div className="note">{[o.size_label, o.cake_flavor, o.filling_flavor].filter(Boolean).join(" · ") || "—"}</div>
+          <div className="note">{(o.cake_name ? [o.cake_name, o.cake_options] : [o.size_label, o.cake_flavor, o.filling_flavor]).filter(Boolean).join(" · ") || "—"}</div>
           {needsKarla && <span className="status-flag">{o.price_pending ? `Precio por confirmar: ${o.pending_items}` : "Falta confirmar"}</span>}
           {waitingCustomer && <span className="status-flag wait">Esperando que el cliente apruebe {money(o.final_total)}</span>}
         </div>
@@ -346,9 +366,20 @@ function OrderCard({ o, open, today, onToggle, onStatus, onSaved, flash, onAuthE
               <div><dt>SMS promociones</dt><dd>{o.sms_opt_in ? "Sí" : "No"}</dd></div>
               <div><dt>Modalidad</dt><dd>{o.delivery_type || "—"}</dd></div>
               <div><dt>Dirección</dt><dd>{o.delivery_address || "—"}</dd></div>
-              <div><dt>Rellenos</dt><dd>{o.filling_count || "—"}</dd></div>
-              <div><dt>Diseño</dt><dd>{o.design_label || "—"}</dd></div>
-              <div><dt>Descripción</dt><dd>{o.design_notes || "—"}</dd></div>
+              {o.cake_name ? (
+                <>
+                  <div><dt>Pastel</dt><dd>{o.cake_name}</dd></div>
+                  {o.cake_details && <div><dt>Detalles</dt><dd>{o.cake_details}</dd></div>}
+                  {o.cake_options && <div><dt>Personalización</dt><dd>{o.cake_options}</dd></div>}
+                  <div><dt>Notas del cliente</dt><dd>{o.design_notes || "—"}</dd></div>
+                </>
+              ) : (
+                <>
+                  <div><dt>Rellenos</dt><dd>{o.filling_count || "—"}</dd></div>
+                  <div><dt>Diseño</dt><dd>{o.design_label || "—"}</dd></div>
+                  <div><dt>Descripción</dt><dd>{o.design_notes || "—"}</dd></div>
+                </>
+              )}
               {o.decoration_label && <div><dt>Decoración</dt><dd>{o.decoration_label}</dd></div>}
               {o.decoration_notes && <div><dt>Detalle decoración</dt><dd>{o.decoration_notes}</dd></div>}
               {o.deposit_amount != null && <div><dt>Anticipo acordado</dt><dd>{money(o.deposit_amount)}</dd></div>}
@@ -503,11 +534,11 @@ function usePoster(load, flash, onAuthError) {
   return { busy, post };
 }
 
-async function pickPhoto(e, apply, flash) {
+async function pickPhoto(e, apply, flash, max = 900) {
   const file = e.target.files?.[0];
   e.target.value = "";
   if (!file) return;
-  try { apply(await fileToDataUrl(file, 900)); } catch { flash("No se pudo leer la foto", "error"); }
+  try { apply(await fileToDataUrl(file, max)); } catch { flash("No se pudo leer la foto", "error"); }
 }
 
 function Catalog({ data, load, flash, onAuthError }) {
@@ -583,6 +614,192 @@ function Catalog({ data, load, flash, onAuthError }) {
         </form>
       </div>
     </>
+  );
+}
+
+/* ================= Pasteles del catálogo ================= */
+
+function Cakes({ data, load, flash, onAuthError }) {
+  const { busy, post } = usePoster(load, flash, onAuthError);
+  const [cake, setCake] = useState(emptyCake);
+  const set = (patch) => setCake((c) => ({ ...c, ...patch }));
+  const cakes = data?.cakes || [];
+  const customOn = data?.settings?.custom_cake !== false;
+
+  async function save(e) {
+    e.preventDefault();
+    if (!cake.image_url) return flash("Agrega una foto del pastel", "error");
+    if (!(Number(cake.price) > 0)) return flash("Escribe el precio del pastel", "error");
+    const { optionsText, ...rest } = cake;
+    const ok = await post({ ...rest, type: "cake", options: parseOptions(optionsText) }, cake.id ? "Pastel actualizado" : "Pastel agregado");
+    if (ok) setCake(emptyCake);
+  }
+  async function remove(c) {
+    if (confirm(`¿Eliminar el pastel "${c.name}"? Los pedidos ya hechos no se borran.`)) {
+      if (await post({ type: "cake_delete", id: c.id }, "Pastel eliminado") && cake.id === c.id) setCake(emptyCake);
+    }
+  }
+  function edit(c) {
+    setCake({ ...emptyCake, ...c, price: Number(c.price), optionsText: optionsToText(c.options), image_url: c.image_url || "" });
+    document.getElementById("cake-form")?.scrollIntoView({ behavior: "smooth" });
+  }
+  const preview = parseOptions(cake.optionsText);
+
+  return (
+    <>
+      <div className="card" id="cake-form" style={{ marginTop: 16 }}>
+        <h2 className="h3">{cake.id ? `Editar: ${cake.name}` : "Agregar pastel al catálogo"}</h2>
+        <p className="note">Estos pasteles son lo primero que ve el cliente al pedir. El precio es fijo; las personalizaciones no tienen costo adicional.</p>
+        <form onSubmit={save} className="form-grid">
+          <div><label htmlFor="c-name">Nombre *</label><input id="c-name" required maxLength={120} value={cake.name} onChange={(e) => set({ name: e.target.value })} /></div>
+          <div><label htmlFor="c-price">Precio (USD) *</label><input id="c-price" type="number" min="1" step="0.01" inputMode="decimal" required value={cake.price} onChange={(e) => set({ price: e.target.value })} /></div>
+          <div><label htmlFor="c-portions">Porciones</label><input id="c-portions" maxLength={80} placeholder="Ej.: 15-18 porciones" value={cake.portions} onChange={(e) => set({ portions: e.target.value })} /></div>
+          <div><label htmlFor="c-size">Tamaño</label><input id="c-size" maxLength={80} placeholder="Ej.: 8 pulgadas, 2 pisos" value={cake.size} onChange={(e) => set({ size: e.target.value })} /></div>
+          <div><label htmlFor="c-frosting">Tipo de merengue / cobertura</label><input id="c-frosting" maxLength={80} placeholder="Ej.: merengue suizo" value={cake.frosting} onChange={(e) => set({ frosting: e.target.value })} /></div>
+          <div><label className="check"><input type="checkbox" checked={cake.active !== false} onChange={(e) => set({ active: e.target.checked })} /> Visible para clientes</label></div>
+          <div className="span-2"><label htmlFor="c-desc">Descripción</label>
+            <textarea id="c-desc" rows={2} maxLength={600} placeholder="Ej.: bizcocho de vainilla con relleno de fresa, decorado con rosetas." value={cake.description} onChange={(e) => set({ description: e.target.value })} /></div>
+          <div className="span-2">
+            <label htmlFor="c-opts">Personalizaciones sin costo (una por línea)</label>
+            <textarea id="c-opts" rows={3} aria-describedby="c-opts-hint" placeholder={"Color: Rosa, Azul, Blanco\nRelleno: Fresa, Chocolate, Dulce de leche"} value={cake.optionsText} onChange={(e) => set({ optionsText: e.target.value })} />
+            <span id="c-opts-hint" className="hint">Formato: <strong>Nombre: opción 1, opción 2, opción 3</strong>. El cliente elige una de cada línea.</span>
+            {preview.length > 0 && (
+              <p className="note" style={{ marginBottom: 0 }}>El cliente verá: {preview.map((g) => `${g.name} (${g.choices.length} opciones)`).join(" · ")}</p>
+            )}
+          </div>
+          <div><label htmlFor="c-photo">Foto *</label><input id="c-photo" type="file" accept="image/*" onChange={(e) => pickPhoto(e, (url) => set({ image_url: url }), flash)} /></div>
+          {cake.image_url && <img className="thumb-img" src={cake.image_url} alt="Vista previa del pastel" />}
+          <div className="row">
+            {cake.id && <button type="button" className="btn ghost" onClick={() => setCake(emptyCake)}>Cancelar</button>}
+            <button className="btn" disabled={busy}>{cake.id ? "Guardar cambios" : "Agregar pastel"}</button>
+          </div>
+        </form>
+      </div>
+
+      <div className="card" style={{ marginTop: 16 }}>
+        <div className="section-head">
+          <h2 className="h3">Pasteles en el catálogo ({cakes.length})</h2>
+          <label className="check">
+            <input type="checkbox" checked={customOn} disabled={busy}
+              onChange={(e) => post({ type: "setting", key: "custom_cake", value: e.target.checked }, e.target.checked ? "Opción visible" : "Opción oculta")} />
+            Ofrecer también “Pastel a tu medida”
+          </label>
+        </div>
+        {cakes.length === 0 ? (
+          <p className="note">Todavía no hay pasteles. Mientras tanto, la página de pedido muestra “Pastel a tu medida” (tamaño, sabores y decoración).</p>
+        ) : (
+          <div className="cake-admin-list">
+            {cakes.map((c) => (
+              <div className={"opt static" + (c.active === false ? " muted" : "")} key={c.id}>
+                {c.image_url && <img src={c.image_url} alt={c.name} loading="lazy" />}
+                <div className="meta">
+                  <strong>{c.name}</strong>
+                  <span className="price">{money(c.price)}{c.active === false ? " · oculto" : ""}</span>
+                  <span className="note" style={{ display: "block" }}>{[c.size, c.portions, c.frosting].filter(Boolean).join(" · ")}</span>
+                  {(c.options || []).length > 0 && <span className="note" style={{ display: "block" }}>Personaliza: {c.options.map((g) => g.name).join(", ")}</span>}
+                  <div className="actions" style={{ marginTop: 8 }}>
+                    <button className="btn ghost small" type="button" aria-label={`Editar ${c.name}`} onClick={() => edit(c)}>Editar</button>
+                    <button className="btn ghost small danger" type="button" aria-label={`Eliminar ${c.name}`} onClick={() => remove(c)}>Eliminar</button>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </>
+  );
+}
+
+/* ================= Personalizar web ================= */
+
+function SiteEditor({ data, load, flash, onAuthError }) {
+  const { busy, post } = usePoster(load, flash, onAuthError);
+  const photos = data?.sitePhotos || [];
+  return (
+    <>
+      <div className="card" style={{ marginTop: 16 }}>
+        <h2 className="h3">Personalizar web</h2>
+        <p className="note" style={{ marginBottom: 0 }}>Elige las fotos que se muestran en cada sección de la página principal. Puedes subir fotos nuevas, ocultarlas, cambiar el orden, moverlas de sección y editar la frase que las acompaña. Los cambios se ven en el sitio al recargar la página.</p>
+      </div>
+      {SECTIONS.map(([id, name, hint]) => {
+        const list = photos.filter((p) => p.section === id);
+        return (
+          <div className="card" key={id} style={{ marginTop: 16 }}>
+            <div className="section-head">
+              <h2 className="h3">{name}</h2>
+              <span className="note">{list.filter((p) => p.active !== false).length} visibles de {list.length}</span>
+            </div>
+            <p className="note">{hint}</p>
+            {list.map((p, i) => (
+              <SitePhotoRow key={p.id + ":" + p.caption_es + ":" + p.caption_en} p={p} first={i === 0} last={i === list.length - 1} busy={busy} post={post} />
+            ))}
+            <AddSitePhoto section={id} busy={busy} post={post} flash={flash} />
+          </div>
+        );
+      })}
+    </>
+  );
+}
+
+function SitePhotoRow({ p, first, last, busy, post }) {
+  const [es, setEs] = useState(p.caption_es || "");
+  const [en, setEn] = useState(p.caption_en || "");
+  const dirty = es !== (p.caption_es || "") || en !== (p.caption_en || "");
+  const base = { type: "site_photo", id: p.id, section: p.section, caption_es: p.caption_es, caption_en: p.caption_en, active: p.active !== false };
+  const label = es || `foto ${p.id}`;
+  return (
+    <div className={"site-photo" + (p.active === false ? " muted" : "")}>
+      <img src={p.image_url} alt={es || "Foto de la sección"} loading="lazy" />
+      <div className="fields">
+        <label className="sr-only" htmlFor={`sp-es-${p.id}`}>Frase en español</label>
+        <input id={`sp-es-${p.id}`} placeholder="Frase en español (opcional)" maxLength={240} value={es} onChange={(e) => setEs(e.target.value)} />
+        <label className="sr-only" htmlFor={`sp-en-${p.id}`}>Frase en inglés</label>
+        <input id={`sp-en-${p.id}`} placeholder="Frase en inglés (opcional)" maxLength={240} value={en} onChange={(e) => setEn(e.target.value)} />
+        <div className="actions">
+          <label className="check" style={{ margin: 0 }}>
+            <input type="checkbox" checked={p.active !== false} disabled={busy}
+              onChange={(e) => post({ ...base, active: e.target.checked }, e.target.checked ? "Foto visible" : "Foto oculta")} />
+            Mostrar
+          </label>
+          <button type="button" className="btn ghost small" disabled={busy || first} aria-label={`Subir ${label}`} onClick={() => post({ type: "site_photo_move", id: p.id, dir: -1 }, "Orden actualizado")}>↑</button>
+          <button type="button" className="btn ghost small" disabled={busy || last} aria-label={`Bajar ${label}`} onClick={() => post({ type: "site_photo_move", id: p.id, dir: 1 }, "Orden actualizado")}>↓</button>
+          <label className="sr-only" htmlFor={`sp-sec-${p.id}`}>Sección</label>
+          <select id={`sp-sec-${p.id}`} value={p.section} disabled={busy} style={{ width: "auto" }}
+            onChange={(e) => post({ ...base, section: e.target.value }, "Foto movida de sección")}>
+            {SECTIONS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+          </select>
+          {dirty && <button type="button" className="btn small" disabled={busy} onClick={() => post({ ...base, caption_es: es, caption_en: en }, "Frase guardada")}>Guardar frase</button>}
+          <button type="button" className="btn ghost small danger" disabled={busy} aria-label={`Eliminar ${label}`}
+            onClick={() => { if (confirm("¿Eliminar esta foto de la página?")) post({ type: "site_photo_delete", id: p.id }, "Foto eliminada"); }}>Eliminar</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function AddSitePhoto({ section, busy, post, flash }) {
+  const [img, setImg] = useState("");
+  const [es, setEs] = useState("");
+  const [en, setEn] = useState("");
+  async function add(e) {
+    e.preventDefault();
+    if (!img) return flash("Elige una foto", "error");
+    if (await post({ type: "site_photo", section, image_url: img, caption_es: es, caption_en: en, active: true }, "Foto agregada")) { setImg(""); setEs(""); setEn(""); }
+  }
+  return (
+    <form onSubmit={add} className="form-grid" style={{ marginTop: 14, paddingTop: 14, borderTop: "1px solid #ffe0ea" }}>
+      <div><label htmlFor={`add-photo-${section}`}>Agregar foto</label>
+        <input id={`add-photo-${section}`} type="file" accept="image/*" onChange={(e) => pickPhoto(e, setImg, flash, 1200)} /></div>
+      {img && <img className="thumb-img" src={img} alt="Vista previa de la foto nueva" />}
+      {section !== "portada" && (
+        <>
+          <div><label htmlFor={`add-es-${section}`}>Frase en español</label><input id={`add-es-${section}`} maxLength={240} value={es} onChange={(e) => setEs(e.target.value)} /></div>
+          <div><label htmlFor={`add-en-${section}`}>Frase en inglés</label><input id={`add-en-${section}`} maxLength={240} value={en} onChange={(e) => setEn(e.target.value)} /></div>
+        </>
+      )}
+      <div className="row"><button className="btn" disabled={busy || !img}>Agregar foto</button></div>
+    </form>
   );
 }
 

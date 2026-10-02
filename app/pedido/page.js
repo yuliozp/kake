@@ -29,7 +29,8 @@ const MIN_DAYS = 2;       // entrega con al menos 2 días de anticipación
 const MIN_TIME = "10:00"; // desde las 10:00 a. m.
 const MAX_PHOTOS = 4;
 
-const isShipping =(label) => /env[ií]o|domicilio|delivery/i.test(label || "");
+const isShipping = (label) => /env[ií]o|domicilio|delivery/i.test(label || "");
+const depositFor = (n) => (Number(n) > 0 ? Math.ceil(Number(n) / 2 / 5) * 5 : 0);
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const money = (n) => "$" + Number(n || 0).toFixed(2);
 
@@ -55,7 +56,47 @@ function OptionGrid({ items, selected, onPick, L }) {
   );
 }
 
+// Tarjetas de los pasteles del catálogo: foto, nombre, precio y sus detalles.
+function CakeGrid({ cakes, selectedId, custom, showCustom, onPick, onCustom }) {
+  const { t } = useI18n();
+  return (
+    <div className="cake-grid" role="radiogroup" aria-label={t.cakePick}>
+      {cakes.map((c) => {
+        const isOn = selectedId === c.id;
+        const facts = [[t.portions, c.portions], [t.sizeL, c.size], [t.frosting, c.frosting]].filter(([, v]) => v);
+        return (
+          <button type="button" role="radio" aria-checked={isOn} key={c.id} className={"cake-card" + (isOn ? " selected" : "")} onClick={() => onPick(c)}>
+            {c.image && <img src={c.image} alt="" loading="lazy" />}
+            <span className="cake-body">
+              <span className="cake-top"><strong>{c.name}</strong><span className="price">{money(c.price)}</span></span>
+              {facts.length > 0 && (
+                <span className="cake-facts">
+                  {facts.map(([k, v]) => <span key={k}><em>{k}:</em> {v}</span>)}
+                </span>
+              )}
+              {c.description && <span className="cake-desc">{c.description}</span>}
+              {(c.options || []).length > 0 && (
+                <span className="cake-free">{t.canCustomize}: {c.options.map((g) => g.name.toLowerCase()).join(", ")}</span>
+              )}
+            </span>
+          </button>
+        );
+      })}
+      {showCustom && (
+        <button type="button" role="radio" aria-checked={custom} className={"cake-card custom" + (custom ? " selected" : "")} onClick={onCustom}>
+          <span className="cake-body">
+            <span className="cake-top"><strong>{t.customTitle}</strong></span>
+            <span className="cake-desc">{t.customDesc}</span>
+            <span className="cake-free">{t.customPrice}</span>
+          </span>
+        </button>
+      )}
+    </div>
+  );
+}
+
 const EMPTY = {
+  cakeId: null, custom: false, cakeOptions: {}, cakeNotes: "",
   name: "", phone: "", email: "", address: "", smsOptIn: false,
   deliveryDate: localISO(MIN_DAYS), deliveryTime: MIN_TIME,
   deliveryType: "", deliveryAddress: "",
@@ -75,6 +116,8 @@ export default function PedidoPage() {
   // Identificador único del intento: si el cliente reenvía, no se duplica el pedido.
   const [clientRef, setClientRef] = useState("");
   const [website, setWebsite] = useState(""); // campo trampa anti-bots
+  const [redirecting, setRedirecting] = useState(false);
+  const [loaded, setLoaded] = useState(false); // el catálogo decide por qué paso se empieza
   const headingRef = useRef(null);
   const firstRender = useRef(true);
   const newRef = () => (globalThis.crypto?.randomUUID ? crypto.randomUUID() : String(Date.now()) + Math.random().toString(36).slice(2));
@@ -83,8 +126,8 @@ export default function PedidoPage() {
 
   useEffect(() => {
     fetch("/api/catalog").then((r) => r.json()).then((d) => {
-      if (Array.isArray(d.options)) setCatalog({ options: d.options, designs: d.designs || [] });
-    }).catch(() => {});
+      if (Array.isArray(d.options)) setCatalog({ options: d.options, designs: d.designs || [], cakes: d.cakes || [], customCake: d.customCake !== false });
+    }).catch(() => {}).finally(() => setLoaded(true));
   }, []);
 
   const by = (cat) => (catalog.options || []).filter((o) => o.category === cat);
@@ -92,19 +135,31 @@ export default function PedidoPage() {
   const has = (cat) => by(cat).length > 0;
   const L = (label) => translateLabel(lang, label);
 
+  const cakes = catalog.cakes || [];
+  const hasCakes = cakes.length > 0;
+  const cake = cakes.find((c) => c.id === form.cakeId) || null;
+  // "A tu medida": cuando el cliente lo elige, o cuando todavía no hay pasteles en el catálogo.
+  const customMode = !hasCakes || (form.custom && !cake);
+
+  // Orden: pastel → personalización → envío o recogida → fecha → datos → confirmar.
   const STEPS = useMemo(() => {
-    const s = [{ id: "cliente" }, { id: "fecha" }, { id: "hora" }];
+    const s = [];
+    if (hasCakes) s.push({ id: "pastel" });
+    if (customMode) {
+      if (has("size")) s.push({ id: "size" });
+      if (has("cake_flavor")) s.push({ id: "sabor" });
+      if (has("filling")) s.push({ id: "relleno" });
+      if (has("filling_count")) s.push({ id: "capas" });
+      s.push({ id: "diseno" });
+      if (has("decoration")) s.push({ id: "decoracion" });
+    } else {
+      s.push({ id: "personaliza" });
+    }
     if (has("delivery")) s.push({ id: "envio" });
-    if (has("size")) s.push({ id: "size" });
-    if (has("cake_flavor")) s.push({ id: "sabor" });
-    if (has("filling")) s.push({ id: "relleno" });
-    if (has("filling_count")) s.push({ id: "capas" });
-    s.push({ id: "diseno" });
-    if (has("decoration")) s.push({ id: "decoracion" });
-    s.push({ id: "resumen" });
+    s.push({ id: "fecha" }, { id: "cliente" }, { id: "resumen" });
     return s;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [catalog]);
+  }, [catalog, customMode]);
 
   // Total conocido + lo que queda "por confirmar" (decoración premium, envío a domicilio).
   const { total, pending } = useMemo(() => {
@@ -116,21 +171,27 @@ export default function PedidoPage() {
       if (o.price_on_request) pend.push(L(o.label));
       else n += Number(o.price || 0);
     };
-    add("size", form.size);
-    add("cake_flavor", form.cakeFlavor);
-    add("filling", form.fillingFlavor);
-    add("filling_count", form.fillingCount);
     add("delivery", form.deliveryType);
-    add("decoration", form.decorationLabel);
-    n += Number(form.designPrice || 0);
+    if (customMode) {
+      add("size", form.size);
+      add("cake_flavor", form.cakeFlavor);
+      add("filling", form.fillingFlavor);
+      add("filling_count", form.fillingCount);
+      add("decoration", form.decorationLabel);
+      n += Number(form.designPrice || 0);
+    } else if (cake) {
+      n += Number(cake.price || 0);
+    }
     return { total: n, pending: pend };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [form, catalog, lang]);
+  }, [form, catalog, lang, customMode]);
   const decoOption = find("decoration", form.decorationLabel);
-  const isPremiumDeco = !!decoOption?.price_on_request;
+  const isPremiumDeco = customMode && !!decoOption?.price_on_request;
   const totalText = pending.length ? `${money(total)} + ${t.toConfirm}` : money(total);
+  // Pastel del catálogo sin envío: se confirma al instante y sigue el pago del anticipo.
+  const instant = !customMode && !!cake && pending.length === 0 && total > 0;
 
-  const previewImg = form.decorationPhotos[0] || form.uploadPreview || form.designImage || find("size", form.size)?.image || IMAGES.hero;
+  const previewImg = (!customMode && cake?.image) || form.decorationPhotos[0] || form.uploadPreview || form.designImage || find("size", form.size)?.image || IMAGES.hero;
   const current = STEPS[Math.min(step, STEPS.length - 1)];
 
   // Al cambiar de paso, el foco va al título para que el lector de pantalla lo anuncie.
@@ -145,14 +206,20 @@ export default function PedidoPage() {
       if (!form.name.trim() || !form.phone.trim() || !form.email.trim()) return t.needClient;
       if (!EMAIL_RE.test(form.email.trim())) return t.badEmail;
     }
+    if (id === "pastel" && !cake && !(form.custom && catalog.customCake !== false)) return t.needCake;
+    if (id === "personaliza") {
+      if (!cake) return t.needCake;
+      const missing = (cake.options || []).find((g) => !g.choices.includes(form.cakeOptions[g.name]));
+      if (missing) return t.needOption.replace("{name}", missing.name);
+    }
     if (id === "fecha") {
       if (!form.deliveryDate) return t.needDate;
       if (form.deliveryDate < localISO(MIN_DAYS)) return t.badDate2;
+      if (!form.deliveryTime || form.deliveryTime < MIN_TIME) return t.badTime;
     }
-    if (id === "hora" && (!form.deliveryTime || form.deliveryTime < MIN_TIME)) return t.badTime;
     if (id === "envio") {
       if (!form.deliveryType) return t.needDelivery;
-      if (isShipping(form.deliveryType) && !(form.deliveryAddress || form.address).trim()) return t.needAddress;
+      if (isShipping(form.deliveryType) && form.deliveryAddress.trim().length < 6) return t.needAddress;
     }
     if (id === "size" && !form.size) return t.needSize;
     if (id === "sabor" && !form.cakeFlavor) return t.needFlavor;
@@ -220,22 +287,33 @@ export default function PedidoPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           lang, clientRef, website,
-          customer: { name: form.name, phone: form.phone, email: form.email, address: form.address, smsOptIn: form.smsOptIn },
+          customer: { name: form.name, phone: form.phone, email: form.email, address: isShipping(form.deliveryType) ? form.deliveryAddress : "", smsOptIn: form.smsOptIn },
           deliveryType: form.deliveryType,
-          deliveryAddress: isShipping(form.deliveryType) ? form.deliveryAddress || form.address : "",
+          deliveryAddress: isShipping(form.deliveryType) ? form.deliveryAddress : "",
           deliveryDate: form.deliveryDate, deliveryTime: form.deliveryTime,
-          size: form.size, cakeFlavor: form.cakeFlavor, fillingFlavor: form.fillingFlavor, fillingCount: form.fillingCount,
-          designId: form.designId,
-          designLabel: form.designLabel || (form.uploadPreview || form.designNotes ? t.ownDesign : ""),
-          designNotes: form.designNotes,
-          designImage: form.uploadPreview,
-          decorationLabel: form.decorationLabel,
-          decorationNotes: isPremiumDeco ? form.decorationNotes : "",
-          decorationPhotos: isPremiumDeco ? form.decorationPhotos : [],
+          ...(customMode ? {
+            size: form.size, cakeFlavor: form.cakeFlavor, fillingFlavor: form.fillingFlavor, fillingCount: form.fillingCount,
+            designId: form.designId,
+            designLabel: form.designLabel || (form.uploadPreview || form.designNotes ? t.ownDesign : ""),
+            designNotes: form.designNotes,
+            designImage: form.uploadPreview,
+            decorationLabel: form.decorationLabel,
+            decorationNotes: isPremiumDeco ? form.decorationNotes : "",
+            decorationPhotos: isPremiumDeco ? form.decorationPhotos : [],
+          } : {
+            cakeId: cake.id, cakeOptions: form.cakeOptions, designNotes: form.cakeNotes,
+          }),
         }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || t.errorGeneric);
+      // Pedido confirmado al instante (sin envío): la siguiente pantalla es el pago del anticipo.
+      if (data.confirmed && data.trackPath) {
+        setStatus("");
+        setRedirecting(true);
+        window.location.assign(data.trackPath + "&nuevo=1");
+        return;
+      }
       setDone({ orderNumber: data.orderNumber, total: data.total ?? total, pending: data.pending || [], deposit: data.deposit, trackPath: data.trackPath });
     } catch (err) {
       setStatus(err.message || t.errorGeneric);
@@ -244,11 +322,8 @@ export default function PedidoPage() {
     }
   }
 
-  const summary = [
-    ["cliente", t.customer, `${form.name} · ${form.phone} · ${form.email}`],
-    ["fecha", t.when, `${prettyDate(form.deliveryDate, lang)} · ${prettyTime(form.deliveryTime, lang)}`],
-    has("delivery") && ["envio", t.mode, L(form.deliveryType)],
-    has("delivery") && isShipping(form.deliveryType) && ["envio", t.address, form.deliveryAddress || form.address],
+  const summary = (customMode ? [
+    hasCakes && ["pastel", t.cake, t.customTitle],
     has("size") && ["size", t.steps.size, L(form.size)],
     has("cake_flavor") && ["sabor", t.steps.sabor, L(form.cakeFlavor)],
     has("filling") && ["relleno", t.steps.relleno, L(form.fillingFlavor)],
@@ -258,8 +333,25 @@ export default function PedidoPage() {
     has("decoration") && ["decoracion", t.steps.decoracion, L(form.decorationLabel) + (isPremiumDeco ? ` (${t.priceTbd})` : "")],
     isPremiumDeco && form.decorationNotes && ["decoracion", t.notes, form.decorationNotes],
     isPremiumDeco && form.decorationPhotos.length > 0 && ["decoracion", lang === "en" ? "Photos" : "Fotos", `${form.decorationPhotos.length}`],
+  ] : [
+    ["pastel", t.cake, cake ? `${cake.name} · ${money(cake.price)}` : ""],
+    ...(cake?.options || []).map((g) => ["personaliza", g.name, form.cakeOptions[g.name]]),
+    form.cakeNotes && ["personaliza", t.notesShort, form.cakeNotes],
+  ]).concat([
+    has("delivery") && ["envio", t.mode, L(form.deliveryType) + (isShipping(form.deliveryType) && pending.length ? ` (${t.priceTbd})` : "")],
+    has("delivery") && isShipping(form.deliveryType) && ["envio", t.address, form.deliveryAddress],
+    ["fecha", t.when, `${prettyDate(form.deliveryDate, lang)} · ${prettyTime(form.deliveryTime, lang)}`],
+    ["cliente", t.customer, `${form.name} · ${form.phone} · ${form.email}`],
     ["cliente", t.promotions, form.smsOptIn ? t.smsYes : t.smsNo],
-  ].filter(Boolean);
+  ]).filter(Boolean);
+
+  function pickCake(c) {
+    // Las personalizaciones con una sola opción quedan elegidas de una vez.
+    const pre = {};
+    (c.options || []).forEach((g) => { if (g.choices.length === 1) pre[g.name] = g.choices[0]; });
+    set({ cakeId: c.id, custom: false, cakeOptions: form.cakeId === c.id ? form.cakeOptions : pre });
+    setStatus("");
+  }
 
   if (done) {
     return (
@@ -283,6 +375,10 @@ export default function PedidoPage() {
         </div>
       </main>
     );
+  }
+
+  if (!loaded) {
+    return <main id="contenido" className="wrap narrow"><p className="note" role="status">{lang === "en" ? "Loading…" : "Cargando…"}</p></main>;
   }
 
   const progress = Math.round(((step + 1) / STEPS.length) * 100);
@@ -309,8 +405,6 @@ export default function PedidoPage() {
                 <input id="f-phone" type="tel" autoComplete="tel" inputMode="tel" value={form.phone} onChange={(e) => set({ phone: e.target.value })} />
                 <label htmlFor="f-email">{t.email} *</label>
                 <input id="f-email" type="email" autoComplete="email" value={form.email} onChange={(e) => set({ email: e.target.value })} />
-                <label htmlFor="f-addr">{t.addressOptional}</label>
-                <input id="f-addr" autoComplete="street-address" value={form.address} onChange={(e) => set({ address: e.target.value })} />
                 <label className="check">
                   <input type="checkbox" checked={form.smsOptIn} onChange={(e) => set({ smsOptIn: e.target.checked })} />
                   {t.smsOpt}
@@ -321,26 +415,58 @@ export default function PedidoPage() {
                 </div>
               </>
             )}
-            {current.id === "fecha" && (
+            {current.id === "pastel" && (
+              <CakeGrid cakes={cakes} selectedId={cake?.id ?? null} custom={!cake && form.custom} showCustom={catalog.customCake !== false}
+                onPick={pickCake} onCustom={() => { set({ cakeId: null, custom: true }); setStatus(""); }} />
+            )}
+            {current.id === "personaliza" && cake && (
               <>
-                <input type="date" aria-label={t.steps.fecha} min={localISO(MIN_DAYS)} value={form.deliveryDate} onChange={(e) => set({ deliveryDate: e.target.value })} />
-                <p className="hint">{t.badDate2}</p>
+                <p className="note" style={{ marginTop: 0 }}>
+                  <strong>{cake.name}</strong>
+                  {[cake.size, cake.portions, cake.frosting].filter(Boolean).length > 0 && " · " + [cake.size, cake.portions, cake.frosting].filter(Boolean).join(" · ")}
+                </p>
+                {(cake.options || []).length > 0 ? <p className="free-tag">{t.freeCustom}</p> : <p>{t.noOptions}</p>}
+                {(cake.options || []).map((g, gi) => (
+                  <fieldset key={g.name} className="opt-group">
+                    <legend>{g.name} *</legend>
+                    <div className="chips" role="radiogroup" aria-label={g.name}>
+                      {g.choices.map((c) => {
+                        const on = form.cakeOptions[g.name] === c;
+                        return (
+                          <button type="button" role="radio" aria-checked={on} key={c} className={"chip big" + (on ? " on" : "")}
+                            onClick={() => { setForm((f) => ({ ...f, cakeOptions: { ...f.cakeOptions, [g.name]: c } })); setStatus(""); }}>
+                            {c}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </fieldset>
+                ))}
+                <label htmlFor="f-cake-notes">{t.cakeNotes}</label>
+                <textarea id="f-cake-notes" rows={2} maxLength={1000} value={form.cakeNotes} onChange={(e) => set({ cakeNotes: e.target.value })} />
               </>
             )}
-            {current.id === "hora" && (
+            {current.id === "fecha" && (
               <>
-                <input type="time" aria-label={t.steps.hora} step={900} min={MIN_TIME} value={form.deliveryTime} onChange={(e) => set({ deliveryTime: e.target.value })} />
+                <label htmlFor="f-date">{t.dateLabel} *</label>
+                <input id="f-date" type="date" min={localISO(MIN_DAYS)} value={form.deliveryDate} onChange={(e) => set({ deliveryDate: e.target.value })} />
+                <p className="hint">{t.badDate2}</p>
+                <label htmlFor="f-time">{t.timeLabel} *</label>
+                <input id="f-time" type="time" step={900} min={MIN_TIME} value={form.deliveryTime} onChange={(e) => set({ deliveryTime: e.target.value })} />
                 <p className="hint">{t.badTime}</p>
               </>
             )}
             {current.id === "envio" && (
               <>
-                <OptionGrid items={by("delivery")} selected={form.deliveryType} L={L} onPick={(o) => set({ deliveryType: o.label })} />
+                <OptionGrid items={by("delivery")} selected={form.deliveryType} L={L} onPick={(o) => { set({ deliveryType: o.label }); setStatus(""); }} />
                 {isShipping(form.deliveryType) && (
                   <>
                     <label htmlFor="f-ship">{t.shipAddress} *</label>
-                    <input id="f-ship" autoComplete="street-address" value={form.deliveryAddress || form.address}
+                    <input id="f-ship" autoComplete="street-address" required aria-required="true" value={form.deliveryAddress}
                       onChange={(e) => set({ deliveryAddress: e.target.value })} />
+                    {find("delivery", form.deliveryType)?.price_on_request && (
+                      <p className="alert" style={{ background: "#fdf1dc", color: "#7a4d00" }}>{t.shipNote}</p>
+                    )}
                   </>
                 )}
               </>
@@ -413,9 +539,12 @@ export default function PedidoPage() {
                 </dl>
                 {pending.length > 0
                   ? <p className="alert" style={{ background: "#fdf1dc", color: "#7a4d00" }}>{t.pendingNote.replace("{items}", pending.join(", "))}</p>
+                  : instant
+                  ? <p className="note">{t.confirmNowNote.replace("{deposit}", money(depositFor(total)))}</p>
                   : <p className="note">{t.priceNote}</p>}
-                <button className="btn wide" disabled={saving} onClick={submit}>
-                  {saving ? t.saving : pending.length ? `${t.confirmPending} · ${totalText}` : `${t.confirm} · ${money(total)}`}
+                {redirecting && <p className="ok" role="status">{t.redirecting}</p>}
+                <button className="btn wide" disabled={saving || redirecting} onClick={submit}>
+                  {saving || redirecting ? t.saving : pending.length ? `${t.confirmPending} · ${totalText}` : `${t.confirm} · ${money(total)}`}
                 </button>
               </>
             )}
@@ -428,7 +557,7 @@ export default function PedidoPage() {
           </div>
           <aside className="preview">
             <img src={previewImg} alt="" />
-            <p className="note" style={{ margin: "10px 0 2px" }}>{t.total}</p>
+            <p className="note" style={{ margin: "10px 0 2px" }}>{instant ? t.totalFinal : t.total}</p>
             <div className="total">{money(total)}</div>
             {pending.length > 0 && <p className="note" style={{ margin: 0 }}>+ {t.toConfirm}</p>}
           </aside>

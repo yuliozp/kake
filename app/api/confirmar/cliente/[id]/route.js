@@ -28,6 +28,8 @@ function view(o) {
     delivery_date: o.delivery_date, delivery_time: o.delivery_time, delivery_type: o.delivery_type,
     delivery_address: o.delivery_address, size_label: o.size_label, cake_flavor: o.cake_flavor,
     filling_flavor: o.filling_flavor, design_label: o.design_label, decoration_label: o.decoration_label,
+    cake_name: o.cake_name, cake_details: o.cake_details, cake_options: o.cake_options, notes: o.cake_id ? o.design_notes : "",
+    has_cake_image: !!o.cake_id, cake_id: o.cake_id,
     price_pending: o.price_pending, pending_items: o.pending_items,
     estimate: Number(o.total || 0), final_total: finalTotal,
     deposit: o.deposit_amount != null ? Number(o.deposit_amount) : null,

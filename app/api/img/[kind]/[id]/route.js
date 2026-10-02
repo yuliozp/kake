@@ -6,7 +6,7 @@ export const dynamic = "force-dynamic";
 // Fotos públicas del catálogo, servidas con caché larga.
 export async function GET(_req, { params }) {
   const { kind, id } = await params;
-  if (!["option", "design"].includes(kind) || !/^\d+$/.test(id)) {
+  if (!["option", "design", "cake", "site"].includes(kind) || !/^\d+$/.test(id)) {
     return new NextResponse("Not found", { status: 404 });
   }
   try {

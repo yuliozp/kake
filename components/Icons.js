@@ -1,3 +1,5 @@
+import { siFacebook, siInstagram, siTiktok } from "simple-icons";
+
 const base = { width: 22, height: 22, "aria-hidden": true, focusable: false };
 
 export function PhoneIcon() {
@@ -23,3 +25,15 @@ export function WhatsAppIcon() {
     </svg>
   );
 }
+
+// Íconos oficiales de cada red (paquete simple-icons).
+const brand = (icon) => function BrandIcon() {
+  return (
+    <svg {...base} width={24} height={24} viewBox="0 0 24 24" fill="currentColor">
+      <path d={icon.path} />
+    </svg>
+  );
+};
+export const FacebookIcon = brand(siFacebook);
+export const InstagramIcon = brand(siInstagram);
+export const TikTokIcon = brand(siTiktok);

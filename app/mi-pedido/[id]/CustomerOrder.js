@@ -7,6 +7,8 @@ const money = (n) => "$" + Number(n || 0).toFixed(2);
 const TXT = {
   es: {
     title: "Tu pedido", loading: "Cargando tu pedido…", when: "Entrega", mode: "Modalidad", address: "Dirección",
+    cake: "Pastel", cakeOptions: "Personalización", notes: "Notas", subtotal: "Subtotal",
+    thanks: "¡Gracias! Recibimos tu pedido y ya está confirmado. Te enviamos la confirmación por correo.",
     size: "Tamaño", flavor: "Sabor / relleno", design: "Diseño", deco: "Decoración",
     reviewing: "Karla está revisando tu pedido. Te enviaremos el precio final por correo para que lo apruebes.",
     reviewingSimple: "Karla está revisando tu pedido y te lo confirmará por correo.",
@@ -27,6 +29,8 @@ const TXT = {
   },
   en: {
     title: "Your order", loading: "Loading your order…", when: "Delivery", mode: "Method", address: "Address",
+    cake: "Cake", cakeOptions: "Customization", notes: "Notes", subtotal: "Subtotal",
+    thanks: "Thank you! We received your order and it's confirmed. We emailed you the confirmation.",
     size: "Size", flavor: "Flavor / filling", design: "Design", deco: "Decoration",
     reviewing: "Karla is reviewing your order. We'll email you the final price for your approval.",
     reviewingSimple: "Karla is reviewing your order and will confirm it by email.",
@@ -59,7 +63,7 @@ function fmtTime(v, lang) {
 }
 
 // Página del cliente: estado de su pedido y botón para aprobar el precio final.
-export default function CustomerOrder({ id, token, paidSession = "", cancelled = false }) {
+export default function CustomerOrder({ id, token, paidSession = "", cancelled = false, fresh = false }) {
   const [o, setO] = useState(null);
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
@@ -95,10 +99,11 @@ export default function CustomerOrder({ id, token, paidSession = "", cancelled =
           }
           if (alive) setPayMsg(paid ? "ok" : "pending");
         }
-        if (paidSession || cancelled) {
+        if (paidSession || cancelled || fresh) {
           const url = new URL(window.location.href);
           url.searchParams.delete("pagado");
           url.searchParams.delete("cancelado");
+          url.searchParams.delete("nuevo");
           window.history.replaceState(null, "", url.toString());
         }
         if (alive) await load();
@@ -197,6 +202,9 @@ export default function CustomerOrder({ id, token, paidSession = "", cancelled =
           <div><dt>{t.when}</dt><dd>{fmtDate(o.delivery_date, lang)} · {fmtTime(o.delivery_time, lang)}</dd></div>
           {o.delivery_type && <div><dt>{t.mode}</dt><dd>{o.delivery_type}</dd></div>}
           {o.delivery_address && <div><dt>{t.address}</dt><dd>{o.delivery_address}</dd></div>}
+          {o.cake_name && <div><dt>{t.cake}</dt><dd>{o.cake_name}{o.cake_details ? ` · ${o.cake_details}` : ""}</dd></div>}
+          {o.cake_options && <div><dt>{t.cakeOptions}</dt><dd>{o.cake_options}</dd></div>}
+          {o.notes && <div><dt>{t.notes}</dt><dd>{o.notes}</dd></div>}
           {o.size_label && <div><dt>{t.size}</dt><dd>{o.size_label}</dd></div>}
           {(o.cake_flavor || o.filling_flavor) && <div><dt>{t.flavor}</dt><dd>{[o.cake_flavor, o.filling_flavor].filter(Boolean).join(" · ")}</dd></div>}
           {o.design_label && <div><dt>{t.design}</dt><dd>{o.design_label}</dd></div>}
@@ -214,6 +222,12 @@ export default function CustomerOrder({ id, token, paidSession = "", cancelled =
           ) : awaitingMe ? (
             <>
               <p>{t.priceReady}</p>
+              {o.price_pending && o.final_total >= o.estimate && (
+                <dl className="summary compact">
+                  <div><dt>{t.subtotal}</dt><dd>{money(o.estimate)}</dd></div>
+                  <div><dt>{o.pending_items}</dt><dd>+ {money(o.final_total - o.estimate)}</dd></div>
+                </dl>
+              )}
               <p className="total">{t.total}: {money(o.final_total)}</p>
               <p>{t.deposit}: <strong>{money(o.deposit)}</strong></p>
               {error && <p className="alert" role="alert">{error}</p>}
@@ -222,7 +236,7 @@ export default function CustomerOrder({ id, token, paidSession = "", cancelled =
             </>
           ) : (
             <>
-              <p className="ok">{o.status === "confirmado" ? t.confirmed : `${t.progress}: ${t.status[o.status] || o.status}`}</p>
+              <p className="ok" role={fresh ? "status" : undefined}>{o.status === "confirmado" ? (fresh && !payMsg ? t.thanks : t.confirmed) : `${t.progress}: ${t.status[o.status] || o.status}`}</p>
               <p className="total">{t.total}: {money(o.final_total)}</p>
               {o.status === "completado" ? null : o.deposit != null && payment}
             </>

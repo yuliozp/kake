@@ -21,6 +21,7 @@ export default function KarlaConfirm({ id, token }) {
   const [o, setO] = useState(null);
   const [error, setError] = useState("");
   const [price, setPrice] = useState("");
+  const [extra, setExtra] = useState(""); // monto adicional (envío, decoración premium)
   const [saving, setSaving] = useState(false);
   const [done, setDone] = useState(null);
 
@@ -43,7 +44,7 @@ export default function KarlaConfirm({ id, token }) {
       const r = await fetch(`/api/confirmar/karla/${id}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ t: token, finalTotal: price }),
+        body: JSON.stringify({ t: token, finalTotal: o.price_pending ? finalWithExtra.toFixed(2) : price }),
       });
       const j = await r.json().catch(() => ({}));
       if (!r.ok) throw new Error(j.error || "No se pudo confirmar");
@@ -60,6 +61,9 @@ export default function KarlaConfirm({ id, token }) {
   }
   if (!o) return <main id="contenido" className="wrap narrow"><p className="note" role="status">Cargando pedido…</p></main>;
 
+  // Con precio por confirmar, Karla solo escribe lo adicional; el total se calcula solo.
+  const finalWithExtra = Math.round((Number(o.total || 0) + Number(extra || 0)) * 100) / 100;
+  const finalShown = o.price_pending ? finalWithExtra : Number(price || 0);
   const waitingCustomer = o.status === "nuevo" && o.price_confirmed_at && !o.customer_confirmed_at;
   const canConfirm = o.status === "nuevo" && !o.price_confirmed_at;
   const photoUrl = (pid) => `/api/orders/${id}/photos/${pid}?t=${encodeURIComponent(token)}`;
@@ -76,16 +80,30 @@ export default function KarlaConfirm({ id, token }) {
           <div><dt>Modalidad</dt><dd>{o.delivery_type || "—"}</dd></div>
           {o.delivery_address && <div><dt>Dirección</dt><dd>{o.delivery_address}</dd></div>}
           <div><dt>Teléfono</dt><dd><a href={`tel:${o.phone}`}>{o.phone}</a></dd></div>
-          <div><dt>Tamaño</dt><dd>{o.size_label || "—"}</dd></div>
-          <div><dt>Sabor / relleno</dt><dd>{[o.cake_flavor, o.filling_flavor].filter(Boolean).join(" · ") || "—"}</dd></div>
-          <div><dt>Diseño</dt><dd>{o.design_label || "—"}</dd></div>
-          {o.design_notes && <div><dt>Descripción</dt><dd>{o.design_notes}</dd></div>}
+          {o.cake_name ? (
+            <>
+              <div><dt>Pastel</dt><dd>{o.cake_name}</dd></div>
+              {o.cake_details && <div><dt>Detalles</dt><dd>{o.cake_details}</dd></div>}
+              {o.cake_options && <div><dt>Personalización</dt><dd>{o.cake_options}</dd></div>}
+              {o.design_notes && <div><dt>Notas del cliente</dt><dd>{o.design_notes}</dd></div>}
+            </>
+          ) : (
+            <>
+              <div><dt>Tamaño</dt><dd>{o.size_label || "—"}</dd></div>
+              <div><dt>Sabor / relleno</dt><dd>{[o.cake_flavor, o.filling_flavor].filter(Boolean).join(" · ") || "—"}</dd></div>
+              <div><dt>Diseño</dt><dd>{o.design_label || "—"}</dd></div>
+              {o.design_notes && <div><dt>Descripción</dt><dd>{o.design_notes}</dd></div>}
+            </>
+          )}
           {o.decoration_label && <div><dt>Decoración</dt><dd>{o.decoration_label}</dd></div>}
           {o.decoration_notes && <div><dt>Detalle decoración</dt><dd>{o.decoration_notes}</dd></div>}
         </dl>
 
-        {(o.has_design_image || (o.photo_ids || []).length > 0) && (
+        {(o.cake_id || o.has_design_image || (o.photo_ids || []).length > 0) && (
           <div className="photo-strip">
+            {o.cake_id && (
+              <img src={`/api/img/cake/${o.cake_id}`} alt={`Foto del pastel ${o.cake_name}`} onError={(e) => { e.currentTarget.style.display = "none"; }} />
+            )}
             {o.has_design_image && (
               <a href={`/api/orders/${id}/image?kind=design&t=${encodeURIComponent(token)}`} target="_blank" rel="noreferrer">
                 <img src={`/api/orders/${id}/image?kind=design&t=${encodeURIComponent(token)}`} alt="Foto de referencia del diseño" />
@@ -107,22 +125,35 @@ export default function KarlaConfirm({ id, token }) {
           </div>
         ) : canConfirm ? (
           <form onSubmit={confirm} style={{ marginTop: 16 }}>
-            {o.price_pending && (
-              <p className="alert" style={{ background: "#fdf1dc", color: "#7a4d00" }}>
-                Precio por confirmar: <strong>{o.pending_items}</strong>. El subtotal sin eso es {money(o.total)}; suma lo que corresponda.
-              </p>
+            {o.price_pending ? (
+              <>
+                <p className="alert" style={{ background: "#fdf1dc", color: "#7a4d00" }}>
+                  Por confirmar: <strong>{o.pending_items}</strong>. Escribe cuánto se cobra adicional por eso.
+                </p>
+                <label htmlFor="extra-price">Monto adicional a cobrar (USD) — {o.pending_items}</label>
+                <input id="extra-price" type="number" min="0" step="0.01" inputMode="decimal" required autoFocus
+                  value={extra} onChange={(e) => setExtra(e.target.value)} />
+                <dl className="summary compact" style={{ marginTop: 10 }}>
+                  <div><dt>Subtotal del pedido</dt><dd>{money(o.total)}</dd></div>
+                  <div><dt>Adicional</dt><dd>+ {money(extra)}</dd></div>
+                  <div><dt>Precio final</dt><dd><strong>{money(finalWithExtra)}</strong></dd></div>
+                </dl>
+              </>
+            ) : (
+              <>
+                <label htmlFor="final-price">Precio final del pedido (USD)</label>
+                <input id="final-price" type="number" min="1" step="0.01" inputMode="decimal" required autoFocus
+                  value={price} onChange={(e) => setPrice(e.target.value)} />
+              </>
             )}
-            <label htmlFor="final-price">Precio final del pedido (USD)</label>
-            <input id="final-price" type="number" min="1" step="0.01" inputMode="decimal" required autoFocus
-              value={price} onChange={(e) => setPrice(e.target.value)} />
-            <p className="hint">Anticipo que se le pedirá al cliente (50 %, redondeado a 5): <strong>{money(deposit(price))}</strong></p>
+            <p className="hint">Anticipo que se le pedirá al cliente (50 %, redondeado a 5): <strong>{money(deposit(finalShown))}</strong></p>
             {error && <p className="alert" role="alert">{error}</p>}
-            <button className="btn wide" disabled={saving || !price} style={{ marginTop: 10 }}>
-              {saving ? "Confirmando…" : "Confirmar pedido"}
+            <button className="btn wide" disabled={saving || (o.price_pending ? extra === "" || !(finalWithExtra > 0) : !price)} style={{ marginTop: 10 }}>
+              {saving ? "Confirmando…" : o.price_pending ? `Enviar precio al cliente · ${money(finalWithExtra)}` : "Confirmar pedido"}
             </button>
             <p className="note">
               {o.price_pending || Number(price) !== Number(o.total)
-                ? "Al confirmar, al cliente le llega el precio para que lo apruebe."
+                ? "Al cliente le llega el precio para que lo valide y confirme. El pedido solo se procesa cuando él confirma."
                 : "Al confirmar, el pedido queda CONFIRMADO y al cliente le llega el aviso."}
             </p>
           </form>

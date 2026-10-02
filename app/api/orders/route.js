@@ -1,13 +1,20 @@
 import { NextResponse } from "next/server";
-import { createOrder, findByClientRef, listOrders, priceOrder, rateLimit } from "@/lib/db";
-import { notifyCustomerReceived, notifyNewOrder } from "@/lib/notify";
+import { createOrder, findByClientRef, getOrderSummary, listOrders, priceOrder, rateLimit } from "@/lib/db";
+import { notifyCustomerConfirmed, notifyCustomerReceived, notifyNewOrder } from "@/lib/notify";
 import { customerUrl, karlaUrl, signLink, siteUrl } from "@/lib/links";
 import { isAdmin } from "@/lib/auth";
-import { clientIp, depositFor, isISODate, isUploadedImage, MAX_DECOR_PHOTOS, MIN_TIME, minDeliveryDate, sameOrigin, str } from "@/lib/validate";
+import { clientIp, depositFor, isISODate, isShipping, isUploadedImage, MAX_DECOR_PHOTOS, MIN_TIME, minDeliveryDate, sameOrigin, str } from "@/lib/validate";
 
 export const dynamic = "force-dynamic";
 
 const fail = (error, status = 400) => NextResponse.json({ error }, { status });
+
+// Respuesta cuando el mismo formulario llega dos veces: se devuelve el pedido ya creado.
+const duplicate = (o) => NextResponse.json({
+  orderNumber: o.order_number, total: Number(o.total), duplicate: true, pending: [],
+  confirmed: o.status === "confirmado",
+  ...(o.id ? { trackPath: `/mi-pedido/${o.id}?t=${signLink("cliente", o.id)}` } : {}),
+});
 
 // Solo el panel admin puede ver los pedidos (contienen datos de clientes).
 export async function GET(req) {
@@ -46,7 +53,7 @@ export async function POST(req) {
   const clientRef = /^[A-Za-z0-9-]{8,64}$/.test(body.clientRef || "") ? body.clientRef : null;
   if (clientRef) {
     const existing = await findByClientRef(clientRef).catch(() => null);
-    if (existing) return NextResponse.json({ orderNumber: existing.order_number, total: Number(existing.total), duplicate: true });
+    if (existing) return duplicate(existing);
   }
 
   try {
@@ -78,12 +85,23 @@ export async function POST(req) {
   if (decorationPhotos.length > MAX_DECOR_PHOTOS) return fail(`Puedes enviar hasta ${MAX_DECOR_PHOTOS} fotos de decoración.`);
   if (decorationPhotos.some((ph) => !isUploadedImage(ph))) return fail("Una de las fotos de decoración no es válida. Prueba con otra.");
 
+  const deliveryType = str(body.deliveryType, 120);
+  const deliveryAddress = isShipping(deliveryType) ? str(body.deliveryAddress, 300) || customer.address : "";
+  if (isShipping(deliveryType) && deliveryAddress.length < 6) return fail("Escribe la dirección completa para el envío.");
+  // Personalizaciones del pastel del catálogo: { "Color": "Rosa", ... }
+  const cakeOptions = {};
+  if (body.cakeOptions && typeof body.cakeOptions === "object" && !Array.isArray(body.cakeOptions)) {
+    for (const [k, v] of Object.entries(body.cakeOptions).slice(0, 12)) cakeOptions[str(k, 40)] = str(v, 60);
+  }
+
   const order = {
     customer,
     clientRef,
     lang: body.lang === "en" ? "en" : "es",
-    deliveryType: str(body.deliveryType, 120),
-    deliveryAddress: str(body.deliveryAddress, 300),
+    deliveryType,
+    deliveryAddress,
+    cakeId: /^\d+$/.test(String(body.cakeId ?? "")) ? Number(body.cakeId) : null,
+    cakeOptions,
     deliveryDate: body.deliveryDate,
     deliveryTime: body.deliveryTime,
     size: str(body.size, 120),
@@ -100,30 +118,44 @@ export async function POST(req) {
   };
 
   try {
-    const { total, pending } = await priceOrder(order);
+    const { total, pending, cake } = await priceOrder(order);
+    if (cake) {
+      // Pastel del catálogo: no lleva los pasos de "arma tu pastel".
+      Object.assign(order, {
+        size: "", cakeFlavor: "", fillingFlavor: "", fillingCountLabel: "", designId: null, designLabel: "",
+        designImage: "", decorationLabel: "", decorationNotes: "", decorationPhotos: [], cake,
+      });
+    }
+    // Pastel del catálogo sin envío ni nada por cotizar: queda CONFIRMADO de inmediato.
+    // (Un pastel "a tu medida" siempre lo revisa Karla antes de confirmar.)
+    const confirmed = !!cake && pending.length === 0 && total > 0;
+    const deposit = confirmed ? depositFor(total) : null;
     let orderId, orderNumber;
     try {
-      ({ orderId, orderNumber } = await createOrder(order, total, pending));
+      ({ orderId, orderNumber } = await createOrder(order, total, pending, { confirmed, deposit, cake }));
     } catch (e) {
       // Dos envíos simultáneos del mismo formulario: gana el primero.
       const again = clientRef && (await findByClientRef(clientRef).catch(() => null));
-      if (again) return NextResponse.json({ orderNumber: again.order_number, total: Number(again.total), duplicate: true });
+      if (again) return duplicate(again);
       throw e;
     }
+    const summary = confirmed ? await getOrderSummary(orderId).catch(() => null) : null;
     const [mail] = await Promise.all([
-      notifyNewOrder({ orderNumber, order, total, pending, karlaLink: karlaUrl(orderId), adminLink: `${siteUrl()}/admin` }),
-      notifyCustomerReceived({ order, orderNumber, total, pending, link: customerUrl(orderId) }),
+      notifyNewOrder({ orderNumber, order, total, pending, confirmed, deposit, karlaLink: karlaUrl(orderId), adminLink: `${siteUrl()}/admin` }),
+      confirmed && summary
+        ? notifyCustomerConfirmed({ o: summary, finalTotal: total, deposit, link: customerUrl(orderId) })
+        : notifyCustomerReceived({ order, orderNumber, total, pending, link: customerUrl(orderId) }),
     ]);
     if (!mail.ok) console.warn("[orders:notify] no se envió el aviso", orderNumber, mail.error || mail.via);
     return NextResponse.json({
-      orderNumber, total, pending, pricePending: pending.length > 0,
+      orderNumber, total, pending, pricePending: pending.length > 0, confirmed,
       deposit: pending.length ? null : depositFor(total),
       trackPath: `/mi-pedido/${orderId}?t=${signLink("cliente", orderId)}`,
       emailed: mail.ok,
     });
   } catch (e) {
+    if (e?.userFacing) return fail(e.message, 400);
     console.error("[orders:create]", e);
-    const msg = String(e?.message || "");
-    return fail(msg.includes("ya no está disponible") ? msg : "No pudimos guardar tu pedido. Intenta de nuevo o escríbenos.", 500);
+    return fail("No pudimos guardar tu pedido. Intenta de nuevo o escríbenos.", 500);
   }
 }
