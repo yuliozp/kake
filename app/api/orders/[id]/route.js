@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { updateOrder } from "@/lib/db";
 import { isAdmin } from "@/lib/auth";
+import { closeCheckoutIfSettled } from "@/lib/payments";
 import { isISODate, isUploadedImage, money, ORDER_STATUSES, PAYMENT_METHODS, sameOrigin, str } from "@/lib/validate";
 
 export const dynamic = "force-dynamic";
@@ -51,6 +52,7 @@ export async function PATCH(req, { params }) {
   try {
     const ok = await updateOrder(Number(id), update);
     if (!ok) return fail("Pedido no encontrado", 404);
+    await closeCheckoutIfSettled(Number(id)).catch((e) => console.error("[orders:update] cerrar pago", id, e));
     return NextResponse.json({ ok: true });
   } catch (e) {
     console.error("[orders:update]", id, e);

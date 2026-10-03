@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { getOrderSummary, rateLimit, setCheckoutSession } from "@/lib/db";
 import { verifyLink, signLink, siteUrl } from "@/lib/links";
 import { sameOrigin, clientIp } from "@/lib/validate";
-import { createCheckoutSession, getCheckoutSession, stripeEnabled } from "@/lib/stripe";
+import { createCheckoutSession, expireCheckoutSession, getCheckoutSession, stripeEnabled } from "@/lib/stripe";
 import { PAYABLE, depositInfo } from "@/lib/payments";
 
 export const dynamic = "force-dynamic";
@@ -34,6 +34,8 @@ export async function POST(req, { params }) {
       if (prev?.status === "open" && prev.amount_total === Math.round(due * 100) && prev.url) {
         return NextResponse.json({ url: prev.url }, { headers: { "Cache-Control": "no-store" } });
       }
+      // Quedó abierta por otro monto (cambió lo que se debe): se cierra para que solo exista una página de pago.
+      if (prev?.status === "open") await expireCheckoutSession(o.checkout_session_id).catch(() => {});
     }
     const back = `${siteUrl()}/mi-pedido/${oid}?t=${signLink("cliente", oid)}`;
     const session = await createCheckoutSession({

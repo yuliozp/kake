@@ -470,6 +470,9 @@ function PaymentForm({ o, onSaved, flash, onAuthError }) {
           <label htmlFor={ids("amount")}>Monto cobrado (USD)</label>
           <input id={ids("amount")} type="number" min="0" step="0.01" inputMode="decimal" value={f.amount} onChange={(e) => set({ amount: e.target.value })} />
           <button type="button" className="link" onClick={() => set({ amount: due.toFixed(2) })}>Pagó completo ({money(due)})</button>
+          <span className="hint">Es el total cobrado hasta hoy (no se suma a lo anterior).
+            {Number(o.online_paid) > 0 && <> Ya incluye <strong>{money(o.online_paid)}</strong> pagado en línea con Stripe.</>}
+          </span>
         </div>
         <div>
           <label htmlFor={ids("date")}>Fecha de pago</label>
