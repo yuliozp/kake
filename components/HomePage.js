@@ -46,6 +46,7 @@ export default function HomePage({ google, photos }) {
             </a>
           )}
           <div style={{ display: "flex", gap: 12, marginTop: 20, flexWrap: "wrap" }}>
+            <a className="btn" href="/catalogo">{t.seeCatalog}</a>
             <a className="btn ghost" href="#contacto">{t.contactUs}</a>
           </div>
         </div>

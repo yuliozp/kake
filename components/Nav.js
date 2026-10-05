@@ -11,6 +11,7 @@ export default function Nav() {
     <header className="nav wrap">
       <Logo />
       <nav className="nav-links" aria-label="Principal">
+        <a href="/catalogo">{t.navCatalog}</a>
         <a href="/#novedades">{t.navNews}</a>
         <a href="/#talento">{t.navTalent}</a>
         <a href="/#resenas">{t.navReviews}</a>

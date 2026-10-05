@@ -39,8 +39,9 @@ export async function POST(req) {
       case "design": await addDesign(body); break;
       case "design_update": await updateDesign(body); break;
       case "design_delete": await deleteDesign(Number(body.id)); break;
-      case "cake": await upsertCake(body); break;
-      case "cake_delete": await deleteCake(Number(body.id)); break;
+      // El catálogo público se regenera en la siguiente visita.
+      case "cake": await upsertCake(body); revalidatePath("/catalogo"); break;
+      case "cake_delete": await deleteCake(Number(body.id)); revalidatePath("/catalogo"); break;
       case "setting":
         if (body.key !== "custom_cake") return fail("Ajuste inválido", 400);
         await setSetting("custom_cake", body.value ? "on" : "off");

@@ -3,7 +3,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { defaultCatalog, IMAGES } from "@/lib/defaults";
 import Logo from "@/components/Logo";
 import { useI18n } from "@/components/LanguageProvider";
-import { translateLabel } from "@/lib/i18n";
+import { translateLabel, trFact } from "@/lib/i18n";
+import { CakeCardBody, CakeFilter, cakeGroup } from "@/components/CakeCatalog";
 import { fileToDataUrl } from "@/lib/image";
 
 // Fecha local (no UTC): evita que de noche "mañana" salga como pasado mañana.
@@ -56,43 +57,46 @@ function OptionGrid({ items, selected, onPick, L }) {
   );
 }
 
-// Tarjetas de los pasteles del catálogo: foto, nombre, precio y sus detalles.
+// Pasteles del catálogo para elegir, con filtro por tamaño cuando son muchos.
 function CakeGrid({ cakes, selectedId, custom, showCustom, onPick, onCustom }) {
   const { t } = useI18n();
+  const [group, setGroup] = useState("");
+  const shown = group ? cakes.filter((c) => cakeGroup(c) === group) : cakes;
+  // Si ya hay un pastel elegido (viene del catálogo o volvió a este paso), se lleva a la vista.
+  useEffect(() => {
+    document.querySelector(".cake-card.selected")?.scrollIntoView({ block: "center" });
+  }, []);
   return (
-    <div className="cake-grid" role="radiogroup" aria-label={t.cakePick}>
-      {cakes.map((c) => {
-        const isOn = selectedId === c.id;
-        const facts = [[t.portions, c.portions], [t.sizeL, c.size], [t.frosting, c.frosting]].filter(([, v]) => v);
-        return (
-          <button type="button" role="radio" aria-checked={isOn} key={c.id} className={"cake-card" + (isOn ? " selected" : "")} onClick={() => onPick(c)}>
-            {c.image && <img src={c.image} alt="" loading="lazy" />}
+    <>
+      <CakeFilter cakes={cakes} value={group} onChange={setGroup} />
+      <div className="cake-grid" role="radiogroup" aria-label={t.cakePick}>
+        {shown.map((c) => {
+          const isOn = selectedId === c.id;
+          return (
+            <button type="button" role="radio" aria-checked={isOn} key={c.id} className={"cake-card" + (isOn ? " selected" : "")} onClick={() => onPick(c)}>
+              <CakeCardBody cake={c} />
+            </button>
+          );
+        })}
+        {showCustom && (
+          <button type="button" role="radio" aria-checked={custom} className={"cake-card custom" + (custom ? " selected" : "")} onClick={onCustom}>
             <span className="cake-body">
-              <span className="cake-top"><strong>{c.name}</strong><span className="price">{money(c.price)}</span></span>
-              {facts.length > 0 && (
-                <span className="cake-facts">
-                  {facts.map(([k, v]) => <span key={k}><em>{k}:</em> {v}</span>)}
-                </span>
-              )}
-              {c.description && <span className="cake-desc">{c.description}</span>}
-              {(c.options || []).length > 0 && (
-                <span className="cake-free">{t.canCustomize}: {c.options.map((g) => g.name.toLowerCase()).join(", ")}</span>
-              )}
+              <span className="cake-top"><strong>{t.customTitle}</strong></span>
+              <span className="cake-desc">{t.customDesc}</span>
+              <span className="cake-free">{t.customPrice}</span>
             </span>
           </button>
-        );
-      })}
-      {showCustom && (
-        <button type="button" role="radio" aria-checked={custom} className={"cake-card custom" + (custom ? " selected" : "")} onClick={onCustom}>
-          <span className="cake-body">
-            <span className="cake-top"><strong>{t.customTitle}</strong></span>
-            <span className="cake-desc">{t.customDesc}</span>
-            <span className="cake-free">{t.customPrice}</span>
-          </span>
-        </button>
-      )}
-    </div>
+        )}
+      </div>
+    </>
   );
+}
+
+// Las personalizaciones con una sola opción quedan elegidas de una vez.
+function singleChoices(c) {
+  const pre = {};
+  (c.options || []).forEach((g) => { if (g.choices.length === 1) pre[g.name] = g.choices[0]; });
+  return pre;
 }
 
 const EMPTY = {
@@ -127,6 +131,10 @@ export default function PedidoPage() {
   useEffect(() => {
     fetch("/api/catalog").then((r) => r.json()).then((d) => {
       if (Array.isArray(d.options)) setCatalog({ options: d.options, designs: d.designs || [], cakes: d.cakes || [], customCake: d.customCake !== false });
+      // Viene de la página del catálogo con un pastel ya elegido (/pedido?pastel=12).
+      const wanted = Number(new URLSearchParams(window.location.search).get("pastel"));
+      const pre = (d.cakes || []).find((c) => c.id === wanted);
+      if (pre) setForm((f) => ({ ...f, cakeId: pre.id, custom: false, cakeOptions: singleChoices(pre) }));
     }).catch(() => {}).finally(() => setLoaded(true));
   }, []);
 
@@ -302,7 +310,7 @@ export default function PedidoPage() {
             decorationNotes: isPremiumDeco ? form.decorationNotes : "",
             decorationPhotos: isPremiumDeco ? form.decorationPhotos : [],
           } : {
-            cakeId: cake.id, cakeOptions: form.cakeOptions, designNotes: form.cakeNotes,
+            cakeId: cake.id, cakeOptions: form.cakeOptions, designNotes: form.cakeNotes, designImage: form.uploadPreview,
           }),
         }),
       });
@@ -348,9 +356,10 @@ export default function PedidoPage() {
     isPremiumDeco && form.decorationNotes && ["decoracion", t.notes, form.decorationNotes],
     isPremiumDeco && form.decorationPhotos.length > 0 && ["decoracion", lang === "en" ? "Photos" : "Fotos", `${form.decorationPhotos.length}`],
   ] : [
-    ["pastel", t.cake, cake ? `${cake.name} · ${money(cake.price)}` : ""],
+    ["pastel", t.cake, cake ? `${L(cake.name)} · ${money(cake.price)}` : ""],
     ...(cake?.options || []).map((g) => ["personaliza", L(g.name), L(form.cakeOptions[g.name])]),
     form.cakeNotes && ["personaliza", t.notesShort, form.cakeNotes],
+    form.uploadPreview && ["personaliza", t.refPhoto, t.photoAttached],
   ]).concat([
     has("delivery") && ["envio", t.mode, L(form.deliveryType) + (isShipping(form.deliveryType) && pending.length ? ` (${t.priceTbd})` : "")],
     has("delivery") && isShipping(form.deliveryType) && ["envio", t.address, shipAddress],
@@ -359,10 +368,7 @@ export default function PedidoPage() {
   ]).filter(Boolean);
 
   function pickCake(c) {
-    // Las personalizaciones con una sola opción quedan elegidas de una vez.
-    const pre = {};
-    (c.options || []).forEach((g) => { if (g.choices.length === 1) pre[g.name] = g.choices[0]; });
-    set({ cakeId: c.id, custom: false, cakeOptions: form.cakeId === c.id ? form.cakeOptions : pre });
+    set({ cakeId: c.id, custom: false, cakeOptions: form.cakeId === c.id ? form.cakeOptions : singleChoices(c) });
     setStatus("");
   }
 
@@ -438,8 +444,8 @@ export default function PedidoPage() {
             {current.id === "personaliza" && cake && (
               <>
                 <p className="note" style={{ marginTop: 0 }}>
-                  <strong>{cake.name}</strong>
-                  {[cake.size, cake.portions, cake.frosting].filter(Boolean).length > 0 && " · " + [cake.size, cake.portions, cake.frosting].filter(Boolean).join(" · ")}
+                  <strong>{L(cake.name)}</strong>
+                  {[cake.size, cake.portions, cake.frosting].filter(Boolean).length > 0 && " · " + [trFact(lang, cake.size), trFact(lang, cake.portions), cake.frosting].filter(Boolean).join(" · ")}
                 </p>
                 {(cake.options || []).length > 0 ? <p className="free-tag">{t.freeCustom}</p> : <p>{t.noOptions}</p>}
                 {(cake.options || []).map((g, gi) => (
@@ -460,6 +466,14 @@ export default function PedidoPage() {
                 ))}
                 <label htmlFor="f-cake-notes">{t.cakeNotes}</label>
                 <textarea id="f-cake-notes" rows={2} maxLength={1000} value={form.cakeNotes} onChange={(e) => set({ cakeNotes: e.target.value })} />
+                <label htmlFor="f-ref-photo">{t.refPhotoLabel}</label>
+                <input id="f-ref-photo" type="file" accept="image/*" onChange={onUpload} />
+                {form.uploadPreview && (
+                  <div className="thumb">
+                    <img src={form.uploadPreview} alt="" />
+                    <button type="button" className="btn ghost small" onClick={() => set({ uploadPreview: "" })}>{t.removePhoto}</button>
+                  </div>
+                )}
               </>
             )}
             {current.id === "envio" && (

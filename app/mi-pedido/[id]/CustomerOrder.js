@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import Logo from "@/components/Logo";
+import { translateLabel, trFact } from "@/lib/i18n";
 
 const money = (n) => "$" + Number(n || 0).toFixed(2);
 
@@ -206,7 +207,7 @@ export default function CustomerOrder({ id, token, paidSession = "", cancelled =
           <div><dt>{t.when}</dt><dd>{fmtDate(o.delivery_date, lang)} · {fmtTime(o.delivery_time, lang)}</dd></div>
           {o.delivery_type && <div><dt>{t.mode}</dt><dd>{o.delivery_type}</dd></div>}
           {o.delivery_address && <div><dt>{t.address}</dt><dd>{o.delivery_address}</dd></div>}
-          {o.cake_name && <div><dt>{t.cake}</dt><dd>{o.cake_name}{o.cake_details ? ` · ${o.cake_details}` : ""}</dd></div>}
+          {o.cake_name && <div><dt>{t.cake}</dt><dd>{translateLabel(lang, o.cake_name)}{o.cake_details ? ` · ${trFact(lang, o.cake_details)}` : ""}</dd></div>}
           {o.cake_options && <div><dt>{t.cakeOptions}</dt><dd>{o.cake_options}</dd></div>}
           {o.notes && <div><dt>{t.notes}</dt><dd>{o.notes}</dd></div>}
           {o.size_label && <div><dt>{t.size}</dt><dd>{o.size_label}</dd></div>}

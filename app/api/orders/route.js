@@ -123,7 +123,7 @@ export async function POST(req) {
       // Pastel del catálogo: no lleva los pasos de "arma tu pastel".
       Object.assign(order, {
         size: "", cakeFlavor: "", fillingFlavor: "", fillingCountLabel: "", designId: null, designLabel: "",
-        designImage: "", decorationLabel: "", decorationNotes: "", decorationPhotos: [], cake,
+        decorationLabel: "", decorationNotes: "", decorationPhotos: [], cake, // la foto de referencia (designImage) se conserva
       });
     }
     // Pastel del catálogo sin envío ni nada por cotizar: queda CONFIRMADO de inmediato.

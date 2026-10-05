@@ -13,6 +13,7 @@ export async function GET(_req, { params }) {
     const src = await getImage(kind, Number(id));
     if (!src) return new NextResponse("Not found", { status: 404 });
     if (/^https:\/\//.test(src)) return NextResponse.redirect(src, 302);
+    if (src.startsWith("/")) return NextResponse.redirect(new URL(src, _req.url), 302);
     const m = /^data:(image\/(?:jpeg|png|webp));base64,(.+)$/.exec(src);
     if (!m) return new NextResponse("Not found", { status: 404 });
     return new NextResponse(Buffer.from(m[2], "base64"), {
