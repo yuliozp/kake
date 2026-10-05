@@ -7,14 +7,40 @@ import { GOOGLE } from "@/lib/google";
 import { PhoneIcon, SmsIcon, WhatsAppIcon, FacebookIcon, InstagramIcon, TikTokIcon } from "@/components/Icons";
 import Reviews from "@/components/Reviews";
 
-function Gallery({ items, lang, alt }) {
+// Los tres diseños de una sección: tarjetas, alternado (foto y texto) y carrusel.
+function SectionItems({ items, layout, lang, alt, label }) {
   if (!items.length) return null;
+  const text = (it) => it[lang] || it.es;
+  if (layout === "alternado") {
+    return (
+      <div className="zigzag">
+        {items.map((it) => (
+          <div key={it.id || it.src} className="zig">
+            <img src={it.src} alt={text(it) ? "" : alt} loading="lazy" />
+            {text(it) && <p>{text(it)}</p>}
+          </div>
+        ))}
+      </div>
+    );
+  }
+  if (layout === "carrusel") {
+    return (
+      <div className="carousel" role="region" aria-label={label} tabIndex={0}>
+        {items.map((it) => (
+          <figure key={it.id || it.src} className="shot">
+            <img src={it.src} alt={text(it) ? "" : alt} loading="lazy" />
+            {text(it) && <figcaption>{text(it)}</figcaption>}
+          </figure>
+        ))}
+      </div>
+    );
+  }
   return (
     <div className={"gallery n" + items.length}>
       {items.map((it) => (
         <figure key={it.id || it.src} className="shot">
-          <img src={it.src} alt={it[lang] || it.es || alt} loading="lazy" />
-          {(it[lang] || it.es) && <figcaption>{it[lang] || it.es}</figcaption>}
+          <img src={it.src} alt={text(it) || alt} loading="lazy" />
+          {text(it) && <figcaption>{text(it)}</figcaption>}
         </figure>
       ))}
     </div>
@@ -28,8 +54,11 @@ const CALL = "tel:+14093325768";
 export default function HomePage({ google, photos }) {
   const { t, lang } = useI18n();
   // Fotos elegidas en el panel ("Personalizar web"); si no cargan, las de siempre.
-  const news = photos?.novedades ?? NEWS;
-  const talent = photos?.talento ?? TALENT;
+  // Si la base de datos no responde, se muestran las secciones de siempre.
+  const sections = photos?.sections ?? [
+    { key: "novedades", layout: "tarjetas", title: { es: t.newsTitle, en: t.newsTitle }, body: { es: t.newsBody, en: t.newsBody }, items: NEWS },
+    { key: "talento", layout: "tarjetas", title: { es: t.talentTitle, en: t.talentTitle }, body: { es: t.talentBody, en: t.talentBody }, items: TALENT },
+  ];
   const hero = photos?.portada?.[0]?.src || IMAGES.hero;
   return (
     <main id="contenido" className="wrap promo">
@@ -53,19 +82,13 @@ export default function HomePage({ google, photos }) {
         <img src={hero} alt={t.cakeAlt} />
       </section>
 
-      <section id="novedades" className="card" style={{ marginTop: 24 }}>
-        <h2>{t.newsTitle}</h2>
-        <p>{t.newsBody}</p>
-        <Gallery items={news} lang={lang} alt={t.cakeAlt} />
-        <p className="note">{t.newsNote}</p>
-      </section>
-
-      <section id="talento" className="card" style={{ marginTop: 16 }}>
-        <h2>{t.talentTitle}</h2>
-        <p>{t.talentBody}</p>
-        <Gallery items={talent} lang={lang} alt={t.cakeAlt} />
-        <p className="note">{t.talentNote}</p>
-      </section>
+      {sections.map((sec, i) => (
+        <section id={sec.key} key={sec.key} className="card" style={{ marginTop: i === 0 ? 24 : 16 }}>
+          <h2>{sec.title[lang] || sec.title.es}</h2>
+          {(sec.body[lang] || sec.body.es || "").split(/\n\s*\n/).filter(Boolean).map((para, k) => <p key={k}>{para}</p>)}
+          <SectionItems items={sec.items} layout={sec.layout} lang={lang} alt={t.cakeAlt} label={sec.title[lang] || sec.title.es} />
+        </section>
+      ))}
 
       <Reviews data={google?.[lang] || google?.es || null} />
 

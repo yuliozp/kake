@@ -44,12 +44,6 @@ const FILTERS = [
 const emptyOpt = { id: null, category: "size", label: "", description: "", price: 0, image_url: "", active: true, price_on_request: false };
 const emptyDesign = { id: null, label: "", image_url: "", price: 0, active: true };
 const emptyCake = { id: null, name: "", price: "", portions: "", size: "", frosting: "", description: "", optionsText: "", image_url: "", active: true };
-const SECTIONS = [
-  ["portada", "Portada (foto principal)", "Se muestra la primera foto visible, arriba de todo."],
-  ["novedades", "Novedades", "Las fotos visibles salen en este orden."],
-  ["talento", "Nuestro talento", "Las fotos visibles salen en este orden."],
-];
-
 // Personalizaciones: una por línea, "Color: Rosa, Azul, Blanco".
 function parseOptions(text) {
   return String(text || "").split("\n").map((line) => {
@@ -193,7 +187,7 @@ export default function AdminPage() {
       <div className="admin-bar card">
         <Logo size={44} />
         <div className="tabs" role="tablist" aria-label="Secciones del panel">
-          {[["pedidos", `Pedidos (${orders.length})`], ["pasteles", "Pasteles"], ["catalogo", "Opciones y envío"], ["disenos", "Diseños"], ["web", "Personalizar web"]].map(([id, name]) => (
+          {[["pedidos", `Pedidos (${orders.length})`], ["pasteles", "Pasteles"], ["catalogo", "Opciones y envío"], ["disenos", "Diseños"], ["web", "Personalizar sitio"]].map(([id, name]) => (
             <button key={id} role="tab" id={"tab-" + id} aria-controls={"panel-" + id} aria-selected={tab === id}
               className={tab === id ? "on" : ""} onClick={() => setTab(id)}>{name}</button>
           ))}
@@ -716,36 +710,130 @@ function Cakes({ data, load, flash, onAuthError }) {
 
 /* ================= Personalizar web ================= */
 
+const LAYOUTS = [
+  ["tarjetas", "Tarjetas", "Fotos en cuadrícula con su descripción debajo."],
+  ["alternado", "Foto y texto", "Una foto grande al lado de su descripción, alternando lados."],
+  ["carrusel", "Carrusel", "Fotos en fila que se deslizan hacia los lados."],
+];
+const emptySection = { id: null, title_es: "", title_en: "", body_es: "", body_en: "", layout: "tarjetas", active: true, in_menu: true };
+
+// Los tres diseños, con un dibujito de cómo se ve cada uno.
+function LayoutPicker({ name, value, onChange }) {
+  return (
+    <fieldset className="layout-picker">
+      <legend>Diseño de la sección</legend>
+      <div className="layout-options">
+        {LAYOUTS.map(([id, label, hint]) => (
+          <label key={id} className={"layout-option" + (value === id ? " on" : "")}>
+            <input type="radio" name={name} value={id} checked={value === id} onChange={() => onChange(id)} />
+            <span className={"layout-sketch sk-" + id} aria-hidden="true"><i /><i /><i /></span>
+            <strong>{label}</strong>
+            <span className="hint">{hint}</span>
+          </label>
+        ))}
+      </div>
+    </fieldset>
+  );
+}
+
+function SectionFields({ f, set, idp }) {
+  return (
+    <div className="form-grid">
+      <div><label htmlFor={idp + "-tes"}>Título *</label><input id={idp + "-tes"} required maxLength={80} value={f.title_es} onChange={(e) => set({ title_es: e.target.value })} /></div>
+      <div><label htmlFor={idp + "-ten"}>Título en inglés</label><input id={idp + "-ten"} maxLength={80} value={f.title_en || ""} onChange={(e) => set({ title_en: e.target.value })} /></div>
+      <div className="span-2"><label htmlFor={idp + "-bes"}>Descripción general de la sección</label>
+        <textarea id={idp + "-bes"} rows={3} maxLength={1200} value={f.body_es || ""} onChange={(e) => set({ body_es: e.target.value })} /></div>
+      <div className="span-2"><label htmlFor={idp + "-ben"}>Descripción en inglés</label>
+        <textarea id={idp + "-ben"} rows={2} maxLength={1200} value={f.body_en || ""} onChange={(e) => set({ body_en: e.target.value })} /></div>
+      <div className="span-2"><LayoutPicker name={idp + "-layout"} value={f.layout} onChange={(layout) => set({ layout })} /></div>
+      <div><label className="check"><input type="checkbox" checked={f.active !== false} onChange={(e) => set({ active: e.target.checked })} /> Mostrar esta sección en la página</label></div>
+      <div><label className="check"><input type="checkbox" checked={f.in_menu !== false} onChange={(e) => set({ in_menu: e.target.checked })} /> Poner su enlace en el menú</label></div>
+    </div>
+  );
+}
+
 function SiteEditor({ data, load, flash, onAuthError }) {
   const { busy, post } = usePoster(load, flash, onAuthError);
   const photos = data?.sitePhotos || [];
+  const sections = data?.sections || [];
+  const [fresh, setFresh] = useState(emptySection);
+  const targets = [["portada", "Portada (foto principal)"], ...sections.map((x) => [x.key, x.title_es])];
+  const hero = photos.filter((p) => p.section === "portada");
+
+  async function addSection(e) {
+    e.preventDefault();
+    if (await post({ ...fresh, type: "site_section" }, "Sección agregada")) setFresh(emptySection);
+  }
+
   return (
     <>
       <div className="card" style={{ marginTop: 16 }}>
-        <h2 className="h3">Personalizar web</h2>
-        <p className="note" style={{ marginBottom: 0 }}>Elige las fotos que se muestran en cada sección de la página principal. Puedes subir fotos nuevas, ocultarlas, cambiar el orden, moverlas de sección y editar la frase que las acompaña. Los cambios se ven en el sitio al recargar la página.</p>
+        <h2 className="h3">Personalizar el sitio</h2>
+        <p className="note" style={{ marginBottom: 0 }}>Aquí armas la página principal: agrega o quita secciones, escribe su descripción, elige uno de los tres diseños y pon las fotos con su texto. Los cambios se ven en el sitio al recargar la página. Las reseñas de Google y la sección de contacto siempre se muestran al final.</p>
       </div>
-      {SECTIONS.map(([id, name, hint]) => {
-        const list = photos.filter((p) => p.section === id);
-        return (
-          <div className="card" key={id} style={{ marginTop: 16 }}>
-            <div className="section-head">
-              <h2 className="h3">{name}</h2>
-              <span className="note">{list.filter((p) => p.active !== false).length} visibles de {list.length}</span>
-            </div>
-            <p className="note">{hint}</p>
-            {list.map((p, i) => (
-              <SitePhotoRow key={p.id + ":" + p.caption_es + ":" + p.caption_en} p={p} first={i === 0} last={i === list.length - 1} busy={busy} post={post} />
-            ))}
-            <AddSitePhoto section={id} busy={busy} post={post} flash={flash} />
-          </div>
-        );
-      })}
+
+      <div className="card" style={{ marginTop: 16 }}>
+        <div className="section-head">
+          <h2 className="h3">Portada (foto principal)</h2>
+          <span className="note">{hero.filter((p) => p.active !== false).length} visibles de {hero.length}</span>
+        </div>
+        <p className="note">Se muestra la primera foto visible, arriba de todo.</p>
+        {hero.map((p, i) => (
+          <SitePhotoRow key={p.id + ":" + p.caption_es + ":" + p.caption_en} p={p} first={i === 0} last={i === hero.length - 1} busy={busy} post={post} targets={targets} />
+        ))}
+        <AddSitePhoto section="portada" busy={busy} post={post} flash={flash} />
+      </div>
+
+      {sections.map((sec, i) => (
+        <SectionCard key={sec.id + ":" + [sec.title_es, sec.title_en, sec.body_es, sec.body_en, sec.layout, sec.active, sec.in_menu].join("|")}
+          sec={sec} first={i === 0} last={i === sections.length - 1} photos={photos.filter((p) => p.section === sec.key)}
+          targets={targets} busy={busy} post={post} flash={flash} />
+      ))}
+
+      <div className="card" style={{ marginTop: 16 }}>
+        <h2 className="h3">Agregar sección</h2>
+        <form onSubmit={addSection}>
+          <SectionFields f={fresh} set={(patch) => setFresh((x) => ({ ...x, ...patch }))} idp="new-sec" />
+          <div className="row"><button className="btn" disabled={busy || !fresh.title_es.trim()}>Agregar sección</button></div>
+          <p className="note">Después de agregarla aparece arriba para que le pongas sus fotos.</p>
+        </form>
+      </div>
     </>
   );
 }
 
-function SitePhotoRow({ p, first, last, busy, post }) {
+function SectionCard({ sec, first, last, photos, targets, busy, post, flash }) {
+  const [f, setF] = useState(sec);
+  const dirty = ["title_es", "title_en", "body_es", "body_en", "layout", "active", "in_menu"].some((k) => (f[k] ?? "") !== (sec[k] ?? ""));
+  const idp = "sec-" + sec.id;
+  return (
+    <div className={"card" + (sec.active === false ? " section-off" : "")} style={{ marginTop: 16 }}>
+      <div className="section-head">
+        <h2 className="h3">{sec.title_es}{sec.active === false ? " (oculta)" : ""}</h2>
+        <div className="actions">
+          <button type="button" className="btn ghost small" disabled={busy || first} aria-label={`Subir la sección ${sec.title_es}`} onClick={() => post({ type: "site_section_move", id: sec.id, dir: -1 }, "Orden actualizado")}>↑ Subir</button>
+          <button type="button" className="btn ghost small" disabled={busy || last} aria-label={`Bajar la sección ${sec.title_es}`} onClick={() => post({ type: "site_section_move", id: sec.id, dir: 1 }, "Orden actualizado")}>↓ Bajar</button>
+          <button type="button" className="btn ghost small danger" disabled={busy}
+            onClick={() => { if (confirm(`¿Quitar la sección "${sec.title_es}" con sus ${photos.length} fotos? Esta acción no se puede deshacer.`)) post({ type: "site_section_delete", id: sec.id }, "Sección eliminada"); }}>Quitar sección</button>
+        </div>
+      </div>
+      <form onSubmit={(e) => { e.preventDefault(); post({ ...f, type: "site_section", id: sec.id }, "Sección guardada"); }}>
+        <SectionFields f={f} set={(patch) => setF((x) => ({ ...x, ...patch }))} idp={idp} />
+        <div className="row">
+          {dirty && <span className="note">Tienes cambios sin guardar.</span>}
+          <button className="btn" disabled={busy || !dirty || !f.title_es.trim()}>Guardar sección</button>
+        </div>
+      </form>
+      <h3 style={{ marginTop: 18 }}>Fotos y descripciones ({photos.filter((p) => p.active !== false).length} visibles de {photos.length})</h3>
+      {photos.map((p, i) => (
+        <SitePhotoRow key={p.id + ":" + p.caption_es + ":" + p.caption_en} p={p} first={i === 0} last={i === photos.length - 1} busy={busy} post={post} targets={targets} />
+      ))}
+      <AddSitePhoto section={sec.key} busy={busy} post={post} flash={flash} />
+    </div>
+  );
+}
+
+function SitePhotoRow({ p, first, last, busy, post, targets }) {
   const [es, setEs] = useState(p.caption_es || "");
   const [en, setEn] = useState(p.caption_en || "");
   const dirty = es !== (p.caption_es || "") || en !== (p.caption_en || "");
@@ -755,10 +843,10 @@ function SitePhotoRow({ p, first, last, busy, post }) {
     <div className={"site-photo" + (p.active === false ? " muted" : "")}>
       <img src={p.image_url} alt={es || "Foto de la sección"} loading="lazy" />
       <div className="fields">
-        <label className="sr-only" htmlFor={`sp-es-${p.id}`}>Frase en español</label>
-        <input id={`sp-es-${p.id}`} placeholder="Frase en español (opcional)" maxLength={240} value={es} onChange={(e) => setEs(e.target.value)} />
-        <label className="sr-only" htmlFor={`sp-en-${p.id}`}>Frase en inglés</label>
-        <input id={`sp-en-${p.id}`} placeholder="Frase en inglés (opcional)" maxLength={240} value={en} onChange={(e) => setEn(e.target.value)} />
+        <label className="sr-only" htmlFor={`sp-es-${p.id}`}>Descripción en español</label>
+        <input id={`sp-es-${p.id}`} placeholder="Descripción (opcional)" maxLength={240} value={es} onChange={(e) => setEs(e.target.value)} />
+        <label className="sr-only" htmlFor={`sp-en-${p.id}`}>Descripción en inglés</label>
+        <input id={`sp-en-${p.id}`} placeholder="Descripción en inglés (opcional)" maxLength={240} value={en} onChange={(e) => setEn(e.target.value)} />
         <div className="actions">
           <label className="check" style={{ margin: 0 }}>
             <input type="checkbox" checked={p.active !== false} disabled={busy}
@@ -770,9 +858,9 @@ function SitePhotoRow({ p, first, last, busy, post }) {
           <label className="sr-only" htmlFor={`sp-sec-${p.id}`}>Sección</label>
           <select id={`sp-sec-${p.id}`} value={p.section} disabled={busy} style={{ width: "auto" }}
             onChange={(e) => post({ ...base, section: e.target.value }, "Foto movida de sección")}>
-            {SECTIONS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+            {targets.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
           </select>
-          {dirty && <button type="button" className="btn small" disabled={busy} onClick={() => post({ ...base, caption_es: es, caption_en: en }, "Frase guardada")}>Guardar frase</button>}
+          {dirty && <button type="button" className="btn small" disabled={busy} onClick={() => post({ ...base, caption_es: es, caption_en: en }, "Descripción guardada")}>Guardar descripción</button>}
           <button type="button" className="btn ghost small danger" disabled={busy} aria-label={`Eliminar ${label}`}
             onClick={() => { if (confirm("¿Eliminar esta foto de la página?")) post({ type: "site_photo_delete", id: p.id }, "Foto eliminada"); }}>Eliminar</button>
         </div>
@@ -797,8 +885,8 @@ function AddSitePhoto({ section, busy, post, flash }) {
       {img && <img className="thumb-img" src={img} alt="Vista previa de la foto nueva" />}
       {section !== "portada" && (
         <>
-          <div><label htmlFor={`add-es-${section}`}>Frase en español</label><input id={`add-es-${section}`} maxLength={240} value={es} onChange={(e) => setEs(e.target.value)} /></div>
-          <div><label htmlFor={`add-en-${section}`}>Frase en inglés</label><input id={`add-en-${section}`} maxLength={240} value={en} onChange={(e) => setEn(e.target.value)} /></div>
+          <div><label htmlFor={`add-es-${section}`}>Descripción</label><input id={`add-es-${section}`} maxLength={240} value={es} onChange={(e) => setEs(e.target.value)} /></div>
+          <div><label htmlFor={`add-en-${section}`}>Descripción en inglés</label><input id={`add-en-${section}`} maxLength={240} value={en} onChange={(e) => setEn(e.target.value)} /></div>
         </>
       )}
       <div className="row"><button className="btn" disabled={busy || !img}>Agregar foto</button></div>

@@ -3,7 +3,7 @@ import { usePathname } from "next/navigation";
 import { useI18n } from "./LanguageProvider";
 import Logo from "./Logo";
 
-export default function Nav() {
+export default function Nav({ menu }) {
   const { lang, t, setLang } = useI18n();
   const path = usePathname();
   if (path?.startsWith("/admin")) return null;
@@ -11,9 +11,10 @@ export default function Nav() {
     <header className="nav wrap">
       <Logo />
       <nav className="nav-links" aria-label="Principal">
-        <a href="/catalogo">{t.navCatalog}</a>
-        <a href="/#novedades">{t.navNews}</a>
-        <a href="/#talento">{t.navTalent}</a>
+        <a href="/catalogo" className="nav-catalog">{t.navCatalog}</a>
+        {(menu || [{ key: "novedades", es: "Novedades", en: "What's new" }, { key: "talento", es: "Nuestro talento", en: "Our craft" }]).map((m) => (
+          <a key={m.key} href={`/#${m.key}`}>{m[lang] || m.es}</a>
+        ))}
         <a href="/#resenas">{t.navReviews}</a>
         <a href="/#contacto">{t.navContact}</a>
       </nav>

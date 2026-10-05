@@ -122,6 +122,8 @@ export default function PedidoPage() {
   const [website, setWebsite] = useState(""); // campo trampa anti-bots
   const [redirecting, setRedirecting] = useState(false);
   const [loaded, setLoaded] = useState(false); // el catálogo decide por qué paso se empieza
+  const [leaving, setLeaving] = useState(false);
+  const leaveRef = useRef(null);
   const headingRef = useRef(null);
   const firstRender = useRef(true);
   const newRef = () => (globalThis.crypto?.randomUUID ? crypto.randomUUID() : String(Date.now()) + Math.random().toString(36).slice(2));
@@ -250,8 +252,20 @@ export default function PedidoPage() {
 
   function back() {
     setStatus("");
-    if (step === 0) window.location.href = "/";
+    if (step === 0) setLeaving(true); // salir del pedido: primero se pregunta
     else setStep(step - 1);
+  }
+
+  // Aviso antes de cerrar la ventana del pedido: se interrumpe y aún no está confirmado.
+  useEffect(() => {
+    const dlg = leaveRef.current;
+    if (!dlg) return;
+    if (leaving && !dlg.open) dlg.showModal();
+    if (!leaving && dlg.open) dlg.close();
+  }, [leaving]);
+  function leave() {
+    // Vuelve al catálogo si el cliente venía de ahí; si no, al inicio.
+    window.location.href = new URLSearchParams(window.location.search).get("pastel") ? "/catalogo" : "/";
   }
 
   async function onUpload(e) {
@@ -414,7 +428,22 @@ export default function PedidoPage() {
                 <h2 id="step-title" ref={headingRef} tabIndex={-1} style={{ margin: 0 }}>{current.id === "resumen" ? t.summaryTitle : t.steps[current.id]}</h2>
                 <div className="progress" aria-hidden="true"><span style={{ width: progress + "%" }} /></div>
               </div>
+              <button type="button" className="modal-close" aria-label={t.closeOrder} title={t.closeOrder} onClick={() => setLeaving(true)} disabled={saving || redirecting}>
+                <span aria-hidden="true">×</span>
+              </button>
             </div>
+            <dialog ref={leaveRef} className="leave-dialog" aria-labelledby="leave-title" aria-describedby="leave-text"
+              onClose={() => setLeaving(false)} onCancel={() => setLeaving(false)}>
+              <h3 id="leave-title">{t.leaveTitle}</h3>
+              <p id="leave-text">{t.leaveBody}</p>
+              <div className="row">
+                <button type="button" className="btn ghost danger" onClick={leave}>{t.leaveYes}</button>
+                <button type="button" className="btn" autoFocus onClick={() => setLeaving(false)}>{t.leaveNo}</button>
+              </div>
+            </dialog>
+            {current.id === "cliente" && cake && (
+              <p className="picked" role="status">{t.pickedCake}: <strong>{L(cake.name)}</strong> · {money(cake.price)}</p>
+            )}
 
             {current.id === "cliente" && (
               <>

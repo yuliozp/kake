@@ -2,10 +2,11 @@
 import { useState } from "react";
 import { useI18n } from "@/components/LanguageProvider";
 import { CakeCardBody, CakeFilter, cakeGroup } from "@/components/CakeCatalog";
+import { translateLabel } from "@/lib/i18n";
 
 // Catálogo público: el cliente puede ver pasteles y precios antes de empezar su pedido.
 export default function CatalogPage({ cakes }) {
-  const { t } = useI18n();
+  const { t, lang } = useI18n();
   const [group, setGroup] = useState("");
   const shown = group ? cakes.filter((c) => cakeGroup(c) === group) : cakes;
   return (
@@ -21,9 +22,11 @@ export default function CatalogPage({ cakes }) {
             <ul className="cake-grid catalog">
               {shown.map((c) => (
                 <li key={c.id}>
-                  <a className="cake-card" href={`/pedido?pastel=${c.id}`}>
-                    <CakeCardBody cake={c} footer={<span className="cake-cta">{t.orderThis} →</span>} />
-                  </a>
+                  <div className="cake-card product">
+                    <CakeCardBody cake={c} footer={
+                      <a className="btn small cake-order" href={`/pedido?pastel=${c.id}`} aria-label={`${t.orderThis}: ${translateLabel(lang, c.name)}`}>{t.orderThis}</a>
+                    } />
+                  </div>
                 </li>
               ))}
             </ul>

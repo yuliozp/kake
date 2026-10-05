@@ -3,6 +3,7 @@ import { Nunito } from "next/font/google";
 import { LanguageProvider } from "@/components/LanguageProvider";
 import Nav from "@/components/Nav";
 import Footer from "@/components/Footer";
+import { getSiteMenu } from "@/lib/db";
 
 const nunito = Nunito({ subsets: ["latin"], weight: ["400", "600", "700", "800", "900"], display: "swap" });
 
@@ -25,13 +26,15 @@ export const metadata = {
 
 export const viewport = { themeColor: "#ff5c8a", width: "device-width", initialScale: 1 };
 
-export default function RootLayout({ children }) {
+export default async function RootLayout({ children }) {
+  // Enlaces del menú según las secciones que Karla tenga visibles en "Personalizar web".
+  const menu = await getSiteMenu().catch((e) => { console.error("[layout] menú", e); return null; });
   return (
     <html lang="es">
       <body className={nunito.className}>
         <a href="#contenido" className="skip-link">Saltar al contenido</a>
         <LanguageProvider>
-          <Nav />
+          <Nav menu={menu} />
           {children}
           <Footer />
         </LanguageProvider>

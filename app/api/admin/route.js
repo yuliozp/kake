@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
 import { revalidatePath } from "next/cache";
 import {
-  addDesign, deleteCake, deleteDesign, deleteOption, deleteSitePhoto, getFullCatalog, moveSitePhoto, setCategoryActive,
-  setSetting, updateDesign, upsertCake, upsertOption, upsertSitePhoto,
+  addDesign, deleteCake, deleteDesign, deleteOption, deleteSitePhoto, deleteSiteSection, getFullCatalog, moveSitePhoto,
+  moveSiteSection, setCategoryActive, setSetting, updateDesign, upsertCake, upsertOption, upsertSitePhoto, upsertSiteSection,
 } from "@/lib/db";
 import { isAdmin } from "@/lib/auth";
 import { CATEGORIES, isCatalogImage, sameOrigin } from "@/lib/validate";
@@ -50,6 +50,10 @@ export async function POST(req) {
       case "site_photo": await upsertSitePhoto(body); revalidatePath("/"); break;
       case "site_photo_delete": await deleteSitePhoto(Number(body.id)); revalidatePath("/"); break;
       case "site_photo_move": await moveSitePhoto(Number(body.id), Number(body.dir) < 0 ? -1 : 1); revalidatePath("/"); break;
+      // Secciones: cambian la portada y también el menú de todas las páginas.
+      case "site_section": await upsertSiteSection(body); revalidatePath("/", "layout"); break;
+      case "site_section_delete": await deleteSiteSection(Number(body.id)); revalidatePath("/", "layout"); break;
+      case "site_section_move": await moveSiteSection(Number(body.id), Number(body.dir) < 0 ? -1 : 1); revalidatePath("/", "layout"); break;
       case "option_delete": await deleteOption(Number(body.id)); break;
       case "category_active":
         if (!CATEGORIES.includes(body.category)) return fail("Categoría inválida", 400);
