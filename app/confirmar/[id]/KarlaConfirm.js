@@ -16,7 +16,8 @@ function fmtTime(v) {
   return new Date(2000, 0, 1, h, m).toLocaleTimeString("es-US", { hour: "numeric", minute: "2-digit" });
 }
 
-// Página que abre Karla desde el botón "Confirmar pedido" del correo.
+// Página que abre Karla desde el botón "Revisar y aceptar" del correo.
+const LABEL = { aceptado: "ACEPTADO (esperando el anticipo)", confirmado: "CONFIRMADO", completado: "COMPLETADO", entregado: "ENTREGADO", cancelado: "CANCELADO" };
 export default function KarlaConfirm({ id, token }) {
   const [o, setO] = useState(null);
   const [error, setError] = useState("");
@@ -47,7 +48,7 @@ export default function KarlaConfirm({ id, token }) {
         body: JSON.stringify({ t: token, finalTotal: o.price_pending ? finalWithExtra.toFixed(2) : price }),
       });
       const j = await r.json().catch(() => ({}));
-      if (!r.ok) throw new Error(j.error || "No se pudo confirmar");
+      if (!r.ok) throw new Error(j.error || "No se pudo aceptar");
       setDone(j);
     } catch (err) {
       setError(err.message);
@@ -64,15 +65,14 @@ export default function KarlaConfirm({ id, token }) {
   // Con precio por confirmar, Karla solo escribe lo adicional; el total se calcula solo.
   const finalWithExtra = Math.round((Number(o.total || 0) + Number(extra || 0)) * 100) / 100;
   const finalShown = o.price_pending ? finalWithExtra : Number(price || 0);
-  const waitingCustomer = o.status === "nuevo" && o.price_confirmed_at && !o.customer_confirmed_at;
-  const canConfirm = o.status === "nuevo" && !o.price_confirmed_at;
+  const canConfirm = o.status === "nuevo";
   const photoUrl = (pid) => `/api/orders/${id}/photos/${pid}?t=${encodeURIComponent(token)}`;
 
   return (
     <main id="contenido" className="wrap narrow">
       <div className="card">
         <Logo />
-        <p className="note" style={{ marginBottom: 0 }}>Confirmar pedido</p>
+        <p className="note" style={{ marginBottom: 0 }}>Revisar y aceptar pedido</p>
         <h1 className="h2">{o.order_number} · {o.customer_name}</h1>
 
         <dl className="summary compact">
@@ -119,9 +119,7 @@ export default function KarlaConfirm({ id, token }) {
 
         {done ? (
           <div className="ok" role="status" style={{ marginTop: 16 }}>
-            {done.needsCustomer
-              ? <>Listo. Le enviamos a {o.customer_name} el precio de <strong>{money(done.finalTotal)}</strong> (anticipo {money(done.deposit)}). Cuando lo apruebe te llega un aviso y el pedido pasa a CONFIRMADO.</>
-              : <>Pedido <strong>CONFIRMADO</strong>. Le enviamos la confirmación a {o.customer_name} con el anticipo de {money(done.deposit)}.</>}
+            Pedido <strong>ACEPTADO</strong> por {money(done.finalTotal)}. Le enviamos a {o.customer_name} el enlace para pagar el anticipo de <strong>{money(done.deposit)}</strong>. Cuando pague, el pedido pasa a CONFIRMADO y te llega un aviso.
           </div>
         ) : canConfirm ? (
           <form onSubmit={confirm} style={{ marginTop: 16 }}>
@@ -149,19 +147,15 @@ export default function KarlaConfirm({ id, token }) {
             <p className="hint">Anticipo que se le pedirá al cliente (50 %, redondeado a 5): <strong>{money(deposit(finalShown))}</strong></p>
             {error && <p className="alert" role="alert">{error}</p>}
             <button className="btn wide" disabled={saving || (o.price_pending ? extra === "" || !(finalWithExtra > 0) : !price)} style={{ marginTop: 10 }}>
-              {saving ? "Confirmando…" : o.price_pending ? `Enviar precio al cliente · ${money(finalWithExtra)}` : "Confirmar pedido"}
+              {saving ? "Aceptando…" : `Aceptar pedido · ${money(finalShown)}`}
             </button>
             <p className="note">
-              {o.price_pending || Number(price) !== Number(o.total)
-                ? "Al cliente le llega el precio para que lo valide y confirme. El pedido solo se procesa cuando él confirma."
-                : "Al confirmar, el pedido queda CONFIRMADO y al cliente le llega el aviso."}
+              Al aceptar, al cliente le llega un correo con el total y el enlace para pagar el anticipo. El pedido queda CONFIRMADO cuando pague.
             </p>
           </form>
-        ) : waitingCustomer ? (
-          <p className="ok" style={{ marginTop: 16 }}>Ya confirmaste el precio ({money(o.final_total)}). Esperando que el cliente lo apruebe.</p>
         ) : (
           <p className="ok" style={{ marginTop: 16 }}>
-            Este pedido ya está {o.status === "cancelado" ? "CANCELADO" : "CONFIRMADO"}{o.final_total ? ` · ${money(o.final_total)}` : ""}.
+            Este pedido ya está {LABEL[o.status] || o.status}{o.final_total ? ` · ${money(o.final_total)}` : ""}.
           </p>
         )}
         <p style={{ marginTop: 16 }}><a href="/admin">Abrir el panel</a></p>

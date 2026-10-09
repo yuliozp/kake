@@ -2,6 +2,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Logo from "@/components/Logo";
 import { fileToDataUrl } from "@/lib/image";
+import { isShipping } from "@/lib/validate";
 
 const CAT = [
   ["size", "Tamaño"],
@@ -11,14 +12,14 @@ const CAT = [
   ["delivery", "Envío / recogida"],
   ["decoration", "Decoración"],
 ];
+// Flujo: En revisión → Aceptada (falta anticipo) → Confirmada (anticipo pagado) → Completada (lista) → Entregada.
 const STATUS = [
-  ["nuevo", "Nuevo"],
-  ["confirmado", "Confirmado"],
-  ["cancelado", "Cancelado"],
-  ["en_preparacion", "En preparación"],
-  ["listo", "Listo"],
-  ["en_entrega", "En entrega"],
-  ["completado", "Completado"],
+  ["nuevo", "En revisión"],
+  ["aceptado", "Aceptada"],
+  ["confirmado", "Confirmada"],
+  ["completado", "Completada"],
+  ["entregado", "Entregada"],
+  ["cancelado", "Cancelada"],
 ];
 const STATUS_LABEL = Object.fromEntries(STATUS);
 const METHODS = [
@@ -34,9 +35,9 @@ const METHODS = [
 const METHOD_LABEL = Object.fromEntries(METHODS);
 const FILTERS = [
   ["pendientes", "Por entregar"],
-  ["nuevos", "Por confirmar"],
+  ["nuevos", "Por aceptar"],
   ["por_cobrar", "Por cobrar"],
-  ["entregados", "Completados"],
+  ["entregados", "Entregadas"],
   ["cancelados", "Cancelados"],
   ["todos", "Todos"],
 ];
@@ -105,6 +106,7 @@ export default function AdminPage() {
   const [data, setData] = useState(null);
   const [orders, setOrders] = useState([]);
   const [tab, setTab] = useState("pedidos");
+  const [focusId, setFocusId] = useState(null); // pedido a abrir desde la agenda
   const [msg, setMsg] = useState(null);
   const [busy, setBusy] = useState(false);
 
@@ -113,7 +115,7 @@ export default function AdminPage() {
   }, []);
   useEffect(() => {
     if (msg?.kind !== "ok") return;
-    const t = setTimeout(() => setMsg(null), 2500);
+    const t = setTimeout(() => setMsg(null), Math.min(8000, 2500 + msg.text.length * 35));
     return () => clearTimeout(t);
   }, [msg]);
 
@@ -187,7 +189,7 @@ export default function AdminPage() {
       <div className="admin-bar card">
         <Logo size={44} />
         <div className="tabs" role="tablist" aria-label="Secciones del panel">
-          {[["pedidos", `Pedidos (${orders.length})`], ["pasteles", "Pasteles"], ["catalogo", "Opciones y envío"], ["disenos", "Diseños"], ["web", "Personalizar sitio"]].map(([id, name]) => (
+          {[["pedidos", `Pedidos (${orders.length})`], ["agenda", "Agenda"], ["pasteles", "Pasteles"], ["catalogo", "Opciones y envío"], ["disenos", "Diseños"], ["web", "Personalizar sitio"]].map(([id, name]) => (
             <button key={id} role="tab" id={"tab-" + id} aria-controls={"panel-" + id} aria-selected={tab === id}
               className={tab === id ? "on" : ""} onClick={() => setTab(id)}>{name}</button>
           ))}
@@ -202,7 +204,8 @@ export default function AdminPage() {
       </div>
 
       <section role="tabpanel" id={"panel-" + tab} aria-labelledby={"tab-" + tab}>
-        {tab === "pedidos" && <Orders orders={orders} setOrders={setOrders} flash={flash} onAuthError={onAuthError} />}
+        {tab === "pedidos" && <Orders orders={orders} setOrders={setOrders} flash={flash} onAuthError={onAuthError} focusId={focusId} onFocused={() => setFocusId(null)} />}
+        {tab === "agenda" && <Agenda orders={orders} onOpen={(id) => { setFocusId(id); setTab("pedidos"); }} />}
         {tab === "pasteles" && <Cakes data={data} load={load} flash={flash} onAuthError={onAuthError} />}
         {tab === "web" && <SiteEditor data={data} load={load} flash={flash} onAuthError={onAuthError} />}
         {tab === "catalogo" && <Catalog data={data} load={load} flash={flash} onAuthError={onAuthError} />}
@@ -214,14 +217,24 @@ export default function AdminPage() {
 
 /* ================= Pedidos ================= */
 
-function Orders({ orders, setOrders, flash, onAuthError }) {
+function Orders({ orders, setOrders, flash, onAuthError, focusId, onFocused }) {
   const [filter, setFilter] = useState("pendientes");
   const [q, setQ] = useState("");
   const [open, setOpen] = useState(null);
 
+  // Abierto desde la agenda: se muestra el pedido con su detalle.
+  useEffect(() => {
+    if (!focusId) return;
+    setFilter("todos");
+    setQ("");
+    setOpen(focusId);
+    onFocused?.();
+    setTimeout(() => document.getElementById(`order-${focusId}`)?.scrollIntoView({ behavior: "smooth", block: "start" }), 50);
+  }, [focusId, onFocused]);
+
   const today = localToday();
   const month = today.slice(0, 7);
-  const active = (o) => o.status !== "completado" && o.status !== "cancelado";
+  const active = (o) => o.status !== "entregado" && o.status !== "cancelado";
 
   const stats = useMemo(() => {
     const pending = orders.filter(active);
@@ -236,7 +249,7 @@ function Orders({ orders, setOrders, flash, onAuthError }) {
     let l = orders.filter((o) => {
       if (filter === "pendientes") return active(o);
       if (filter === "por_cobrar") return o.status !== "cancelado" && payInfo(o).balance > 0;
-      if (filter === "entregados") return o.status === "completado";
+      if (filter === "entregados") return o.status === "entregado";
       if (filter === "nuevos") return o.status === "nuevo";
       if (filter === "cancelados") return o.status === "cancelado";
       return true;
@@ -256,8 +269,9 @@ function Orders({ orders, setOrders, flash, onAuthError }) {
     const prev = o.status;
     patchLocal(o.id, { status });
     try {
-      await api(`/api/orders/${o.id}`, { method: "PATCH", body: JSON.stringify({ status }) });
-      flash(`${o.order_number}: ${STATUS_LABEL[status]}`);
+      const r = await api(`/api/orders/${o.id}`, { method: "PATCH", body: JSON.stringify({ status }) });
+      if (r.order) patchLocal(o.id, r.order);
+      flash(`${o.order_number}: ${STATUS_LABEL[status]}.${r.note ? " " + r.note : ""}`);
     } catch (e) {
       patchLocal(o.id, { status: prev });
       onAuthError(e) || flash(e.message, "error");
@@ -308,13 +322,13 @@ function addDays(iso, n) {
 
 function OrderCard({ o, open, today, onToggle, onStatus, onSaved, flash, onAuthError }) {
   const pay = payInfo(o);
-  const late = o.delivery_date && o.delivery_date < today && o.status !== "completado" && o.status !== "cancelado";
-  const needsKarla = o.status === "nuevo" && !o.price_confirmed_at;
-  const waitingCustomer = o.status === "nuevo" && o.price_confirmed_at && !o.customer_confirmed_at;
+  const late = o.delivery_date && o.delivery_date < today && o.status !== "entregado" && o.status !== "cancelado";
+  const needsKarla = o.status === "nuevo";
+  const waitingCustomer = o.status === "aceptado";
   const isToday = o.delivery_date === today;
   const detailId = `order-detail-${o.id}`;
   return (
-    <li className={"order-card status-" + o.status}>
+    <li id={`order-${o.id}`} className={"order-card status-" + o.status}>
       <div className="order-top">
         <div>
           <strong className="order-no">{o.order_number}</strong>
@@ -333,8 +347,8 @@ function OrderCard({ o, open, today, onToggle, onStatus, onSaved, flash, onAuthE
         <div>
           <div className="order-customer">{o.customer_name}</div>
           <div className="note">{(o.cake_name ? [o.cake_name, o.cake_options] : [o.size_label, o.cake_flavor, o.filling_flavor]).filter(Boolean).join(" · ") || "—"}</div>
-          {needsKarla && <span className="status-flag">{o.price_pending ? `Precio por confirmar: ${o.pending_items}` : "Falta confirmar"}</span>}
-          {waitingCustomer && <span className="status-flag wait">Esperando que el cliente apruebe {money(o.final_total)}</span>}
+          {needsKarla && <span className="status-flag">{o.price_pending ? `Por aceptar · costo por confirmar: ${o.pending_items}` : "Por aceptar"}</span>}
+          {waitingCustomer && <span className="status-flag wait">Esperando el anticipo de {money(o.deposit_amount)}</span>}
         </div>
         <div className="order-money">
           <strong>{money(pay.due)}</strong>
@@ -347,7 +361,7 @@ function OrderCard({ o, open, today, onToggle, onStatus, onSaved, flash, onAuthE
         </button>
         {needsKarla && o.karla_path && (
           <a className="btn small" href={o.karla_path} target="_blank" rel="noreferrer">
-            {o.price_pending ? "Confirmar y poner precio" : "Confirmar pedido"}
+            {o.price_pending ? "Revisar, poner costo y aceptar" : "Revisar y aceptar"}
           </a>
         )}
       </div>
@@ -430,7 +444,7 @@ function PaymentForm({ o, onSaved, flash, onAuthError }) {
     try {
       const payment = { ...f, amount: f.amount || 0, method: f.method || null, date: Number(f.amount || 0) > 0 ? f.date : f.date || null };
       if (proof !== undefined) payment.proof = proof;
-      await api(`/api/orders/${o.id}`, { method: "PATCH", body: JSON.stringify({ payment }) });
+      const r = await api(`/api/orders/${o.id}`, { method: "PATCH", body: JSON.stringify({ payment }) });
       onSaved({
         final_total: f.finalTotal === "" ? null : Number(f.finalTotal),
         paid_amount: Number(f.amount || 0),
@@ -438,9 +452,10 @@ function PaymentForm({ o, onSaved, flash, onAuthError }) {
         payment_method: f.method || null,
         payment_note: f.note,
         ...(proof !== undefined ? { has_payment_proof: !!proof, img_version: String(Date.now()) } : {}),
+        ...(r.order ? { status: r.order.status } : {}),
       });
       setProof(undefined);
-      flash(`Cobro de ${o.order_number} guardado`);
+      flash(`Cobro de ${o.order_number} guardado.${r.note ? " " + r.note : ""}`);
     } catch (err) {
       onAuthError(err) || flash(err.message, "error");
     } finally {
@@ -507,6 +522,123 @@ function PaymentForm({ o, onSaved, flash, onAuthError }) {
         <button className="btn" disabled={saving}>{saving ? "Guardando…" : "Guardar cobro"}</button>
       </div>
     </form>
+  );
+}
+
+/* ================= Agenda ================= */
+
+const WEEKDAYS = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"];
+const isoOf = (y, m, d) => `${y}-${String(m + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+
+// Anticipo confirmado cuando lo pagado cubre el anticipo acordado.
+function depositState(o) {
+  const dep = o.deposit_amount != null ? Number(o.deposit_amount) : null;
+  return dep != null && dep > 0 && Number(o.paid_amount || 0) >= dep ? "confirmado" : "pendiente";
+}
+
+function AgendaItem({ o, onOpen, compact = false }) {
+  const dep = depositState(o);
+  const ship = isShipping(o.delivery_type);
+  return (
+    <button type="button" className={"agenda-item st-border-" + o.status + (compact ? " compact" : "")} onClick={() => onOpen(o.id)}
+      aria-label={`${fmtTime(o.delivery_time)} ${o.order_number}, ${ship ? "delivery" : "recogida"}, ${STATUS_LABEL[o.status] || o.status}, anticipo ${dep}`}>
+      <span className="agenda-time">{fmtTime(o.delivery_time) || "—"}</span>
+      <strong className="agenda-no">{o.order_number}</strong>
+      <span className="agenda-tags">
+        <span className={"tag " + (ship ? "tag-ship" : "tag-pick")}>{ship ? "Delivery" : "Recogida"}</span>
+        <span className={"tag st-" + o.status}>{STATUS_LABEL[o.status] || o.status}</span>
+        <span className={"tag dep-" + dep}>Anticipo {dep}</span>
+      </span>
+      {!compact && <span className="agenda-who">{o.customer_name}{o.cake_name ? ` · ${o.cake_name}` : ""}</span>}
+    </button>
+  );
+}
+
+function Agenda({ orders, onOpen }) {
+  const today = localToday();
+  const [ym, setYm] = useState(() => today.slice(0, 7));
+  const [day, setDay] = useState(today);
+  const [showCancelled, setShowCancelled] = useState(false);
+  const [y, m] = ym.split("-").map(Number);
+  const month = m - 1;
+
+  const byDay = useMemo(() => {
+    const map = {};
+    for (const o of orders) {
+      if (!o.delivery_date || (!showCancelled && o.status === "cancelado")) continue;
+      (map[o.delivery_date] ||= []).push(o);
+    }
+    for (const k of Object.keys(map)) map[k].sort((a, b) => String(a.delivery_time).localeCompare(String(b.delivery_time)));
+    return map;
+  }, [orders, showCancelled]);
+
+  const first = new Date(y, month, 1);
+  const lead = (first.getDay() + 6) % 7; // semana empieza en lunes
+  const days = new Date(y, month + 1, 0).getDate();
+  const cells = [...Array(lead).fill(null), ...Array.from({ length: days }, (_, i) => i + 1)];
+  while (cells.length % 7) cells.push(null);
+
+  const move = (n) => {
+    const d = new Date(y, month + n, 1);
+    setYm(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`);
+  };
+  const goToday = () => { setYm(today.slice(0, 7)); setDay(today); };
+  const cap = (x) => x.charAt(0).toUpperCase() + x.slice(1);
+  const title = cap(first.toLocaleDateString("es-US", { month: "long", year: "numeric" }));
+  const monthCount = Object.entries(byDay).filter(([k]) => k.startsWith(ym)).reduce((n, [, l]) => n + l.length, 0);
+  const dayList = byDay[day] || [];
+
+  return (
+    <div className="card agenda" style={{ marginTop: 16 }}>
+      <div className="agenda-head">
+        <div className="agenda-nav">
+          <button className="btn ghost small" onClick={() => move(-1)} aria-label="Mes anterior">‹</button>
+          <h2 className="agenda-title">{title}</h2>
+          <button className="btn ghost small" onClick={() => move(1)} aria-label="Mes siguiente">›</button>
+          <button className="btn ghost small" onClick={goToday}>Hoy</button>
+        </div>
+        <div className="agenda-tools">
+          <span className="note">{monthCount} {monthCount === 1 ? "pedido" : "pedidos"} este mes</span>
+          <label className="check-inline">
+            <input type="checkbox" checked={showCancelled} onChange={(e) => setShowCancelled(e.target.checked)} /> Mostrar canceladas
+          </label>
+        </div>
+      </div>
+
+      <div className="agenda-legend" aria-hidden="true">
+        {STATUS.map(([v, l]) => <span key={v} className={"tag st-" + v}>{l}</span>)}
+      </div>
+
+      <div className="agenda-grid" role="grid" aria-label={`Pedidos de ${title}`}>
+        {WEEKDAYS.map((w) => <div key={w} className="agenda-wd" role="columnheader">{w}</div>)}
+        {cells.map((d, i) => {
+          if (!d) return <div key={i} className="agenda-cell empty" />;
+          const iso = isoOf(y, month, d);
+          const list = byDay[iso] || [];
+          const cls = "agenda-cell" + (iso === today ? " today" : "") + (iso === day ? " selected" : "") + (list.length ? " has" : "");
+          return (
+            <div key={i} className={cls} role="gridcell">
+              <button type="button" className="agenda-day" onClick={() => setDay(iso)} aria-pressed={iso === day}
+                aria-label={`${fmtDate(iso, { weekday: "long", day: "numeric", month: "long" })}: ${list.length} ${list.length === 1 ? "pedido" : "pedidos"}`}>
+                <span>{d}</span>
+                {list.length > 0 && <span className="agenda-count">{list.length}</span>}
+              </button>
+              <div className="agenda-cell-items">
+                {list.slice(0, 3).map((o) => <AgendaItem key={o.id} o={o} onOpen={onOpen} compact />)}
+                {list.length > 3 && <button type="button" className="link agenda-more" onClick={() => setDay(iso)}>+{list.length - 3} más</button>}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      <div className="agenda-day-list">
+        <h3>{cap(fmtDate(day, { weekday: "long", day: "numeric", month: "long" }))}</h3>
+        {dayList.length === 0
+          ? <p className="note">No hay pedidos para este día.</p>
+          : <div className="agenda-list">{dayList.map((o) => <AgendaItem key={o.id} o={o} onOpen={onOpen} />)}</div>}
+      </div>
+    </div>
   );
 }
 

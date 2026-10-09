@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
-import { getOrderSummary, karlaConfirm } from "@/lib/db";
+import { acceptOrder, getOrderSummary } from "@/lib/db";
 import { verifyLink, customerUrl, signLink } from "@/lib/links";
 import { depositFor, money, sameOrigin } from "@/lib/validate";
-import { notifyCustomerConfirmed, notifyCustomerPrice } from "@/lib/notify";
+import { notifyCustomerAccepted } from "@/lib/notify";
 
 export const dynamic = "force-dynamic";
 const fail = (error, status = 400) => NextResponse.json({ error }, { status, headers: { "Cache-Control": "no-store" } });
@@ -33,29 +33,23 @@ export async function GET(req, { params }) {
   return NextResponse.json(view(o, oid), { headers: { "Cache-Control": "no-store" } });
 }
 
-// Karla confirma y pone el precio final.
+// Karla acepta el pedido con su precio final; al cliente le llega el enlace para pagar el anticipo.
 export async function POST(req, { params }) {
   if (!sameOrigin(req)) return fail("Origen no permitido", 403);
   const body = await req.json().catch(() => ({}));
   const { o, oid, err } = await load(params, body.t);
   if (err) return err;
-  if (o.status !== "nuevo" || o.customer_confirmed_at) return fail("Este pedido ya fue confirmado o cancelado.", 409);
+  if (o.status !== "nuevo") return fail("Este pedido ya fue aceptado o cancelado.", 409);
   const finalTotal = money(body.finalTotal);
   if (finalTotal === null || finalTotal <= 0) return fail("Escribe el precio final del pedido.");
-  const estimate = Number(o.total || 0);
-  // Si el precio estaba por confirmar o Karla lo cambió, el cliente debe aprobarlo.
-  const needsCustomer = !!o.price_pending || Math.abs(finalTotal - estimate) >= 0.01;
   const deposit = depositFor(finalTotal);
   try {
-    const ok = await karlaConfirm(oid, finalTotal, deposit, needsCustomer);
-    if (!ok) return fail("Este pedido ya fue confirmado o cancelado.", 409);
-    const link = customerUrl(oid);
-    const mail = needsCustomer
-      ? await notifyCustomerPrice({ o, finalTotal, deposit, link })
-      : await notifyCustomerConfirmed({ o, finalTotal, deposit, link });
-    return NextResponse.json({ ok: true, needsCustomer, finalTotal, deposit, emailed: !!mail?.ok });
+    const ok = await acceptOrder(oid, finalTotal, deposit);
+    if (!ok) return fail("Este pedido ya fue aceptado o cancelado.", 409);
+    const mail = await notifyCustomerAccepted({ o, finalTotal, deposit, link: customerUrl(oid) });
+    return NextResponse.json({ ok: true, finalTotal, deposit, emailed: !!mail?.ok });
   } catch (e) {
     console.error("[confirmar:karla]", oid, e);
-    return fail("No se pudo confirmar. Intenta de nuevo.", 500);
+    return fail("No se pudo aceptar. Intenta de nuevo.", 500);
   }
 }

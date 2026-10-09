@@ -200,7 +200,7 @@ export default function PedidoPage() {
   const decoOption = find("decoration", form.decorationLabel);
   const isPremiumDeco = customMode && !!decoOption?.price_on_request;
   const totalText = pending.length ? `${money(total)} + ${t.toConfirm}` : money(total);
-  // Pastel del catálogo sin envío: se confirma al instante y sigue el pago del anticipo.
+  // Pastel del catálogo sin costos por confirmar: el total ya es el final (Karla igual revisa el pedido).
   const instant = !customMode && !!cake && pending.length === 0 && total > 0;
 
   // Dirección de entrega: la que escribió en sus datos, salvo que ponga otra para este pedido.
@@ -333,26 +333,7 @@ export default function PedidoPage() {
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || t.errorGeneric);
-      // Pedido confirmado al instante (recogida): se pasa directo a la página de pago del anticipo.
-      if (data.confirmed && data.trackPath) {
-        setStatus("");
-        setRedirecting(true);
-        let payUrl = "";
-        if (data.id && data.t) {
-          try {
-            const pr = await fetch(`/api/pagar/${data.id}`, {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ t: data.t }),
-            });
-            const pj = await pr.json().catch(() => ({}));
-            if (pr.ok && pj.url) payUrl = pj.url;
-          } catch { /* sin pago en línea: se muestra el pedido confirmado */ }
-        }
-        // Si el pago en línea no está disponible, se muestra el pedido confirmado con sus instrucciones.
-        window.location.assign(payUrl || data.trackPath + "&nuevo=1");
-        return;
-      }
+      // Todo pedido queda en revisión: el pago del anticipo llega por correo cuando Karla lo acepta.
       setDone({ orderNumber: data.orderNumber, total: data.total ?? total, pending: data.pending || [], deposit: data.deposit, trackPath: data.trackPath });
     } catch (err) {
       setStatus(err.message || t.errorGeneric);
@@ -631,7 +612,7 @@ export default function PedidoPage() {
                   : <p className="note">{t.priceNote}</p>}
                 {redirecting && <p className="ok" role="status">{t.redirecting}</p>}
                 <button className="btn wide" disabled={saving || redirecting} onClick={submit}>
-                  {saving || redirecting ? t.saving : pending.length ? t.confirmPending : instant ? `${t.confirmPay} · ${money(deposit)}` : `${t.confirm} · ${money(total)}`}
+                  {saving || redirecting ? t.saving : pending.length ? t.confirmPending : `${t.sendOrder} · ${money(total)}`}
                 </button>
               </>
             )}

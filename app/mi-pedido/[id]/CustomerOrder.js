@@ -1,7 +1,8 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Logo from "@/components/Logo";
 import { translateLabel, trFact } from "@/lib/i18n";
+import { GOOGLE } from "@/lib/google";
 
 const money = (n) => "$" + Number(n || 0).toFixed(2);
 
@@ -9,48 +10,46 @@ const TXT = {
   es: {
     title: "Tu pedido", loading: "Cargando tu pedido…", when: "Entrega", mode: "Modalidad", address: "Dirección",
     cake: "Pastel", cakeOptions: "Personalización", notes: "Notas", subtotal: "Subtotal",
-    thanks: "¡Gracias! Recibimos tu pedido y ya está confirmado. Te enviamos la confirmación por correo.",
     size: "Tamaño", flavor: "Sabor / relleno", design: "Diseño", deco: "Decoración",
-    reviewing: "Karla está revisando tu pedido. Te enviaremos el precio final por correo para que lo apruebes.",
-    reviewingSimple: "Karla está revisando tu pedido y te lo confirmará por correo.",
-    pendingItems: "Por confirmar", estimate: "Subtotal estimado",
-    priceReady: "Karla confirmó el costo pendiente. Este es el total de tu pedido:",
-    total: "Total", deposit: "Anticipo (50 %)", confirm: "Confirmar mi pedido", confirming: "Confirmando…",
-    confirmPay: "Confirmar y pagar anticipo",
-    confirmNote: "Al confirmar reservamos tu fecha y pasas a la página de pago del anticipo.",
-    confirmed: "¡Tu pedido está confirmado!", nextStep: "Siguiente paso: pago del anticipo de",
+    reviewing: "Tu pedido está en revisión. Karla lo está revisando y confirmará el costo pendiente. Cuando lo acepte, te enviaremos un correo con el total y el enlace para pagar el anticipo.",
+    reviewingSimple: "Tu pedido está en revisión. Cuando Karla lo acepte, te enviaremos un correo con el enlace para pagar el anticipo y reservar tu fecha.",
+    pendingItems: "Por confirmar", estimate: "Total estimado",
+    accepted: "¡Karla aceptó tu pedido! Para confirmarlo y reservar tu fecha, paga el anticipo.",
+    total: "Total", deposit: "Anticipo (50 %)",
+    confirmed: "¡Tu pedido está confirmado! Tu fecha queda reservada.",
+    readyPickup: "¡Tu pedido está listo para recoger!", readyDelivery: "¡Tu pedido está listo! Pronto saldrá a entrega.",
+    directions: "Cómo llegar",
+    delivered: "Pedido entregado. ¡Gracias por tu preferencia!", review: "Evaluar nuestro servicio en Google",
     payNote: "Karla te contactará con las opciones de pago.",
-    payBtn: "Pagar anticipo", paying: "Abriendo el pago…", paySecure: "Pago seguro con Stripe: tarjeta, Apple Pay o Google Pay.",
-    verifying: "Confirmando tu pago…", paidOk: "¡Pago recibido! Tu fecha queda reservada.", payCancelled: "No se completó el pago. Puedes intentarlo de nuevo cuando quieras.",
+    payDeposit: "Pagar anticipo", payBalance: "Pagar saldo", paying: "Abriendo el pago…", paySecure: "Pago seguro con Stripe: tarjeta, Apple Pay o Google Pay.",
+    verifying: "Confirmando tu pago…", paidOk: "¡Pago recibido! Gracias.", payCancelled: "No se completó el pago. Puedes intentarlo de nuevo cuando quieras.",
     payPending: "Tu pago se está procesando. Te avisaremos por correo cuando se confirme.",
-    depositPaid: "Anticipo pagado", paid: "Pagado", balance: "Saldo pendiente", balanceNote: "El saldo se paga al recibir tu pastel.",
+    paid: "Pagado", balance: "Saldo pendiente", balanceNote: "El saldo se paga al recoger o recibir tu pastel.", fullyPaid: "Pagado por completo",
     testMode: "Modo de prueba: usa la tarjeta 4242 4242 4242 4242, cualquier fecha futura y cualquier CVC.",
-    progress: "Tu pedido está en marcha", cancelled: "Este pedido fue cancelado. Si tienes dudas, escríbenos.",
+    cancelled: "Este pedido fue cancelado. Si tienes dudas, escríbenos.",
     help: "¿Preguntas? WhatsApp +1 (409) 332-5768",
-    status: { confirmado: "Confirmado", en_preparacion: "En preparación", listo: "Listo", en_entrega: "En entrega", completado: "Completado" },
   },
   en: {
     title: "Your order", loading: "Loading your order…", when: "Delivery", mode: "Method", address: "Address",
     cake: "Cake", cakeOptions: "Customization", notes: "Notes", subtotal: "Subtotal",
-    thanks: "Thank you! We received your order and it's confirmed. We emailed you the confirmation.",
     size: "Size", flavor: "Flavor / filling", design: "Design", deco: "Decoration",
-    reviewing: "Karla is reviewing your order. We'll email you the final price for your approval.",
-    reviewingSimple: "Karla is reviewing your order and will confirm it by email.",
-    pendingItems: "To be confirmed", estimate: "Estimated subtotal",
-    priceReady: "Karla confirmed the pending cost. This is your order total:",
-    total: "Total", deposit: "Deposit (50%)", confirm: "Confirm my order", confirming: "Confirming…",
-    confirmPay: "Confirm and pay deposit",
-    confirmNote: "Confirming reserves your date and takes you to the deposit payment page.",
-    confirmed: "Your order is confirmed!", nextStep: "Next step: deposit payment of",
+    reviewing: "Your order is under review. Karla is reviewing it and will confirm the pending cost. Once she accepts it, we'll email you the total and the link to pay the deposit.",
+    reviewingSimple: "Your order is under review. Once Karla accepts it, we'll email you the link to pay the deposit and hold your date.",
+    pendingItems: "To be confirmed", estimate: "Estimated total",
+    accepted: "Karla accepted your order! To confirm it and hold your date, please pay the deposit.",
+    total: "Total", deposit: "Deposit (50%)",
+    confirmed: "Your order is confirmed! Your date is reserved.",
+    readyPickup: "Your order is ready for pickup!", readyDelivery: "Your order is ready! It will be out for delivery soon.",
+    directions: "Get directions",
+    delivered: "Order delivered. Thank you for choosing us!", review: "Rate our service on Google",
     payNote: "Karla will contact you with payment options.",
-    payBtn: "Pay deposit", paying: "Opening payment…", paySecure: "Secure payment with Stripe: card, Apple Pay or Google Pay.",
-    verifying: "Confirming your payment…", paidOk: "Payment received! Your date is reserved.", payCancelled: "The payment wasn't completed. You can try again anytime.",
+    payDeposit: "Pay deposit", payBalance: "Pay balance", paying: "Opening payment…", paySecure: "Secure payment with Stripe: card, Apple Pay or Google Pay.",
+    verifying: "Confirming your payment…", paidOk: "Payment received! Thank you.", payCancelled: "The payment wasn't completed. You can try again anytime.",
     payPending: "Your payment is processing. We'll email you once it's confirmed.",
-    depositPaid: "Deposit paid", paid: "Paid", balance: "Balance due", balanceNote: "The balance is paid when you receive your cake.",
+    paid: "Paid", balance: "Balance due", balanceNote: "The balance is due when you pick up or receive your cake.", fullyPaid: "Fully paid",
     testMode: "Test mode: use card 4242 4242 4242 4242, any future date and any CVC.",
-    progress: "Your order is in progress", cancelled: "This order was cancelled. If you have questions, contact us.",
+    cancelled: "This order was cancelled. If you have questions, contact us.",
     help: "Questions? WhatsApp +1 (409) 332-5768",
-    status: { confirmado: "Confirmed", en_preparacion: "Being prepared", listo: "Ready", en_entrega: "Out for delivery", completado: "Completed" },
   },
 };
 
@@ -65,14 +64,14 @@ function fmtTime(v, lang) {
   return new Date(2000, 0, 1, h, m).toLocaleTimeString(lang === "en" ? "en-US" : "es-US", { hour: "numeric", minute: "2-digit" });
 }
 
-// Página del cliente: estado de su pedido y botón para aprobar el precio final.
-export default function CustomerOrder({ id, token, paidSession = "", cancelled = false, fresh = false }) {
+// Página del cliente: estado de su pedido y pagos en línea (anticipo y saldo).
+export default function CustomerOrder({ id, token, paidSession = "", cancelled = false, fresh = false, autoPay = false }) {
   const [o, setO] = useState(null);
   const [error, setError] = useState("");
-  const [saving, setSaving] = useState(false);
   const [paying, setPaying] = useState(false);
   // "", "verifying", "ok", "pending", "cancelled"
   const [payMsg, setPayMsg] = useState(paidSession ? "verifying" : cancelled ? "cancelled" : "");
+  const autoPayDone = useRef(false);
 
   async function load() {
     const r = await fetch(`/api/confirmar/cliente/${id}?t=${encodeURIComponent(token)}`, { cache: "no-store" });
@@ -81,6 +80,24 @@ export default function CustomerOrder({ id, token, paidSession = "", cancelled =
     setO(j);
     if (j.lang === "en") document.documentElement.lang = "en";
     return j;
+  }
+
+  async function pay() {
+    setPaying(true);
+    setError("");
+    try {
+      const r = await fetch(`/api/pagar/${id}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ t: token }),
+      });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok || !j.url) throw new Error(j.error || "Error");
+      window.location.assign(j.url);
+    } catch (e) {
+      setError(e.message);
+      setPaying(false);
+    }
   }
 
   useEffect(() => {
@@ -102,14 +119,18 @@ export default function CustomerOrder({ id, token, paidSession = "", cancelled =
           }
           if (alive) setPayMsg(paid ? "ok" : "pending");
         }
-        if (paidSession || cancelled || fresh) {
+        if (paidSession || cancelled || fresh || autoPay) {
           const url = new URL(window.location.href);
-          url.searchParams.delete("pagado");
-          url.searchParams.delete("cancelado");
-          url.searchParams.delete("nuevo");
+          for (const k of ["pagado", "cancelado", "nuevo", "pagar"]) url.searchParams.delete(k);
           window.history.replaceState(null, "", url.toString());
         }
-        if (alive) await load();
+        if (!alive) return;
+        const j = await load();
+        // Enlace "Pagar" del correo: se abre directo la página de pago.
+        if (autoPay && !autoPayDone.current && j.can_pay && alive) {
+          autoPayDone.current = true;
+          await pay();
+        }
       } catch (e) {
         if (alive) setError(e.message);
       }
@@ -118,83 +139,77 @@ export default function CustomerOrder({ id, token, paidSession = "", cancelled =
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id, token]);
 
-  async function pay() {
-    setPaying(true);
-    setError("");
-    try {
-      const r = await fetch(`/api/pagar/${id}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ t: token }),
-      });
-      const j = await r.json().catch(() => ({}));
-      if (!r.ok || !j.url) throw new Error(j.error || "Error");
-      window.location.assign(j.url);
-    } catch (e) {
-      setError(e.message);
-      setPaying(false);
-    }
-  }
-
   const lang = o?.lang === "en" ? "en" : "es";
   const t = TXT[lang];
-
-  async function confirm() {
-    setSaving(true);
-    setError("");
-    try {
-      const r = await fetch(`/api/confirmar/cliente/${id}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ t: token }),
-      });
-      const j = await r.json().catch(() => ({}));
-      if (!r.ok) throw new Error(j.error || "Error");
-      setO((prev) => ({ ...prev, ...j }));
-      // Confirmado: se pasa directo a la página de pago del anticipo.
-      if (j.can_pay) { await pay(); return; }
-    } catch (e) {
-      setError(e.message);
-    } finally {
-      setSaving(false);
-    }
-  }
 
   if (error && !o) return <main id="contenido" className="wrap narrow"><div className="card"><Logo /><p className="alert" role="alert">{error}</p></div></main>;
   if (!o) return <main id="contenido" className="wrap narrow"><p className="note" role="status">{payMsg === "verifying" ? TXT.es.verifying : TXT.es.loading}</p></main>;
 
-  const awaitingMe = o.status === "nuevo" && o.price_confirmed && !o.customer_confirmed;
-  const depositPaid = o.deposit != null && o.deposit_due === 0;
   const balance = Math.max(0, Number(o.final_total || 0) - Number(o.paid_amount || 0));
+  const extraCost = o.price_pending && o.final_total != null && o.final_total > o.estimate;
 
-  const payment = (
+  const payBox = (
     <div className="pay-box">
       {payMsg === "ok" && <p className="ok" role="status">{t.paidOk}</p>}
       {payMsg === "pending" && <p className="note" role="status">{t.payPending}</p>}
-      {payMsg === "cancelled" && !depositPaid && <p className="note" role="status">{t.payCancelled}</p>}
-      {depositPaid ? (
+      {payMsg === "cancelled" && o.can_pay && <p className="note" role="status">{t.payCancelled}</p>}
+      {Number(o.paid_amount) > 0 && (
+        <p>{t.paid}: <strong>{money(o.paid_amount)}</strong>
+          {" · "}{balance > 0 ? <>{t.balance}: <strong>{money(balance)}</strong></> : <strong>✓ {t.fullyPaid}</strong>}</p>
+      )}
+      {o.can_pay ? (
         <>
-          <p><strong>✓ {t.depositPaid}</strong> · {t.paid}: {money(o.paid_amount)}</p>
-          {balance > 0 && <p className="note">{t.balance}: <strong>{money(balance)}</strong>. {t.balanceNote}</p>}
-        </>
-      ) : o.can_pay ? (
-        <>
-          {Number(o.paid_amount) > 0 && <p className="note">{t.paid}: {money(o.paid_amount)}</p>}
           {error && <p className="alert" role="alert">{error}</p>}
           <button className="btn wide" onClick={pay} disabled={paying}>
-            {paying ? t.paying : `${t.payBtn} ${money(o.deposit_due)}`}
+            {paying ? t.paying : `${o.pay_kind === "balance" ? t.payBalance : t.payDeposit} ${money(o.pay_amount)}`}
           </button>
           <p className="note">🔒 {t.paySecure}</p>
           {o.test_mode && <p className="note" style={{ color: "#7a4d00" }}>{t.testMode}</p>}
         </>
-      ) : (
-        <>
-          <p>{t.nextStep} <strong>{money(o.deposit)}</strong>.</p>
-          <p className="note">{t.payNote}</p>
-        </>
-      )}
+      ) : o.status === "aceptado" && o.deposit_due > 0 ? (
+        <p className="note">{t.payNote}</p>
+      ) : balance > 0 && o.status !== "entregado" ? (
+        <p className="note">{t.balanceNote}</p>
+      ) : null}
     </div>
   );
+
+  let stateBlock;
+  if (o.status === "cancelado") {
+    stateBlock = <p className="alert">{t.cancelled}</p>;
+  } else if (o.status === "nuevo") {
+    stateBlock = (
+      <>
+        <p className="ok" role={fresh ? "status" : undefined}>{o.price_pending ? t.reviewing : t.reviewingSimple}</p>
+        <p className="note">{t.estimate}: <strong>{money(o.estimate)}</strong>{o.price_pending ? ` · ${t.pendingItems}: ${o.pending_items}` : ""}</p>
+      </>
+    );
+  } else {
+    const msg = {
+      aceptado: t.accepted, confirmado: t.confirmed,
+      completado: o.pickup ? t.readyPickup : t.readyDelivery, entregado: t.delivered,
+    }[o.status] || "";
+    stateBlock = (
+      <>
+        <p className="ok">{msg}</p>
+        {extraCost && o.status === "aceptado" && (
+          <dl className="summary compact">
+            <div><dt>{t.subtotal}</dt><dd>{money(o.estimate)}</dd></div>
+            <div><dt>{o.pending_items}</dt><dd>+ {money(o.final_total - o.estimate)}</dd></div>
+          </dl>
+        )}
+        <p className="total">{t.total}: {money(o.final_total)}</p>
+        {o.status === "aceptado" && o.deposit != null && <p>{t.deposit}: <strong>{money(o.deposit)}</strong></p>}
+        {o.status === "completado" && o.pickup && (
+          <p><a href={GOOGLE.directions} target="_blank" rel="noreferrer">{t.directions}</a></p>
+        )}
+        {o.status === "entregado" && (
+          <p><a className="btn" href={GOOGLE.writeReview} target="_blank" rel="noreferrer">{t.review}</a></p>
+        )}
+        {payBox}
+      </>
+    );
+  }
 
   return (
     <main id="contenido" className="wrap narrow">
@@ -216,39 +231,7 @@ export default function CustomerOrder({ id, token, paidSession = "", cancelled =
           {o.decoration_label && <div><dt>{t.deco}</dt><dd>{o.decoration_label}</dd></div>}
         </dl>
 
-        <div style={{ marginTop: 16 }}>
-          {o.status === "cancelado" ? (
-            <p className="alert">{t.cancelled}</p>
-          ) : o.status === "nuevo" && !o.price_confirmed ? (
-            <>
-              <p>{o.price_pending ? t.reviewing : t.reviewingSimple}</p>
-              <p className="note">{t.estimate}: <strong>{money(o.estimate)}</strong>{o.price_pending ? ` · ${t.pendingItems}: ${o.pending_items}` : ""}</p>
-            </>
-          ) : awaitingMe ? (
-            <>
-              <p>{t.priceReady}</p>
-              {o.price_pending && o.final_total >= o.estimate && (
-                <dl className="summary compact">
-                  <div><dt>{t.subtotal}</dt><dd>{money(o.estimate)}</dd></div>
-                  <div><dt>{o.pending_items}</dt><dd>+ {money(o.final_total - o.estimate)}</dd></div>
-                </dl>
-              )}
-              <p className="total">{t.total}: {money(o.final_total)}</p>
-              <p>{t.deposit}: <strong>{money(o.deposit)}</strong></p>
-              {error && <p className="alert" role="alert">{error}</p>}
-              <button className="btn wide" onClick={confirm} disabled={saving || paying}>
-                {saving || paying ? t.confirming : o.pay_online ? `${t.confirmPay} ${money(o.deposit)}` : t.confirm}
-              </button>
-              <p className="note">{t.confirmNote}</p>
-            </>
-          ) : (
-            <>
-              <p className="ok" role={fresh ? "status" : undefined}>{o.status === "confirmado" ? (fresh && !payMsg ? t.thanks : t.confirmed) : `${t.progress}: ${t.status[o.status] || o.status}`}</p>
-              <p className="total">{t.total}: {money(o.final_total)}</p>
-              {o.status === "completado" ? null : o.deposit != null && payment}
-            </>
-          )}
-        </div>
+        <div style={{ marginTop: 16 }}>{stateBlock}</div>
         <p className="note" style={{ marginTop: 16 }}>{t.help}</p>
       </div>
     </main>

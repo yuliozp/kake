@@ -4,7 +4,7 @@ export const metadata = { title: "Mi pedido · My order", robots: { index: false
 
 export default async function Page({ params, searchParams }) {
   const { id } = await params;
-  const { t, pagado, cancelado, nuevo } = await searchParams;
+  const { t, pagado, cancelado, nuevo, pagar } = await searchParams;
   return (
     <CustomerOrder
       id={id}
@@ -12,6 +12,7 @@ export default async function Page({ params, searchParams }) {
       paidSession={typeof pagado === "string" ? pagado : ""}
       cancelled={cancelado === "1"}
       fresh={nuevo === "1"}
+      autoPay={pagar === "1"}
     />
   );
 }

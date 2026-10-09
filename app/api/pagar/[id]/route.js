@@ -3,12 +3,12 @@ import { getOrderSummary, rateLimit, setCheckoutSession } from "@/lib/db";
 import { verifyLink, signLink, siteUrl } from "@/lib/links";
 import { sameOrigin, clientIp } from "@/lib/validate";
 import { createCheckoutSession, expireCheckoutSession, getCheckoutSession, stripeEnabled } from "@/lib/stripe";
-import { PAYABLE, depositInfo } from "@/lib/payments";
+import { payableNow } from "@/lib/payments";
 
 export const dynamic = "force-dynamic";
 const fail = (error, status = 400) => NextResponse.json({ error }, { status, headers: { "Cache-Control": "no-store" } });
 
-// El cliente pulsa "Pagar anticipo": creamos (o reutilizamos) la sesión de Stripe Checkout.
+// El cliente pulsa "Pagar anticipo" o "Pagar saldo": creamos (o reutilizamos) la sesión de Stripe Checkout.
 export async function POST(req, { params }) {
   if (!sameOrigin(req)) return fail("Origen no permitido", 403);
   if (!stripeEnabled()) return fail("El pago en línea aún no está disponible.", 503);
@@ -22,24 +22,24 @@ export async function POST(req, { params }) {
   const o = await getOrderSummary(oid);
   if (!o) return fail("Not found", 404);
   const en = o.lang === "en";
-  if (!PAYABLE.includes(o.status)) return fail(en ? "This order can't be paid right now." : "Este pedido no se puede pagar en este momento.", 409);
-  const { due } = depositInfo(o);
-  if (!(due > 0)) return fail(en ? "Your deposit is already paid." : "Tu anticipo ya está pagado.", 409);
+  const pay = payableNow(o);
+  if (!pay) return fail(en ? "There's nothing to pay on this order right now." : "Este pedido no tiene pagos pendientes en este momento.", 409);
+  const due = pay.amount;
   if (due < 0.5) return fail("Monto demasiado pequeño para pago en línea.", 409);
 
   try {
     // Si hay una sesión abierta por el mismo monto, se reutiliza (evita cobros duplicados).
     if (o.checkout_session_id) {
       const prev = await getCheckoutSession(o.checkout_session_id).catch(() => null);
-      if (prev?.status === "open" && prev.amount_total === Math.round(due * 100) && prev.url) {
+      if (prev?.status === "open" && prev.amount_total === Math.round(due * 100) && prev.metadata?.kind === pay.kind && prev.url) {
         return NextResponse.json({ url: prev.url }, { headers: { "Cache-Control": "no-store" } });
       }
-      // Quedó abierta por otro monto (cambió lo que se debe): se cierra para que solo exista una página de pago.
+      // Quedó abierta por otro monto o concepto (cambió lo que se debe): se cierra para que solo exista una página de pago.
       if (prev?.status === "open") await expireCheckoutSession(o.checkout_session_id).catch(() => {});
     }
     const back = `${siteUrl()}/mi-pedido/${oid}?t=${signLink("cliente", oid)}`;
     const session = await createCheckoutSession({
-      orderId: oid, orderNumber: o.order_number, amount: due, email: o.email, lang: o.lang,
+      orderId: oid, orderNumber: o.order_number, amount: due, kind: pay.kind, email: o.email, lang: o.lang,
       successUrl: `${back}&pagado={CHECKOUT_SESSION_ID}`,
       cancelUrl: `${back}&cancelado=1`,
     });

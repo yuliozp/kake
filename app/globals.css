@@ -445,3 +445,62 @@ a.cake-card { color: inherit; width: 100%; }
   .step-float { display: none; }
   .modal { padding-bottom: 22px; }
 }
+
+/* Estados del pedido (oct. 2026): Aceptada y Completada (lista) */
+.order-card.status-aceptado { border-left-color: #b7791f; }
+.order-card.status-completado { border-left-color: #2b6cb0; }
+.st-aceptado { background: #fdf1dc; border-color: #f0cf95; color: #7a4d00; }
+.st-completado { background: #e3eefb; border-color: #a9c7ee; color: #1d4f8c; }
+
+/* Agenda */
+.agenda-head { display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: center; justify-content: space-between; }
+.agenda-nav { display: flex; align-items: center; gap: 8px; }
+.agenda-title { margin: 0 6px; font-size: 22px; min-width: 170px; text-align: center; }
+.agenda-tools { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+.check-inline { display: inline-flex; align-items: center; gap: 6px; font-weight: 600; margin: 0; }
+.check-inline input { width: auto; min-height: 0; }
+.agenda-legend { display: flex; flex-wrap: wrap; gap: 6px; margin: 12px 0; }
+.tag { display: inline-block; font-size: 11.5px; font-weight: 800; line-height: 1.2; padding: 3px 8px; border-radius: 999px; border: 1px solid transparent; white-space: nowrap; }
+.tag-ship { background: #e0f2f1; color: #0b5f58; border-color: #9fd6d1; }
+.tag-pick { background: #f3e8ff; color: #5b2a86; border-color: #d8b4fe; }
+.dep-pendiente { background: #fff1f1; color: #9b1c1c; border-color: #f5b5b5; }
+.dep-confirmado { background: #e3f3eb; color: #185c43; border-color: #a8d8bf; }
+.agenda-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 6px; }
+.agenda-wd { text-align: center; font-size: 12px; font-weight: 800; color: #8a5a58; padding: 4px 0; }
+.agenda-cell { min-height: 112px; background: #fff; border: 1px solid #f3d5de; border-radius: 12px; padding: 4px; display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.agenda-cell.empty { background: transparent; border-color: transparent; }
+.agenda-cell.today { border-color: var(--pink-strong); box-shadow: inset 0 0 0 1px var(--pink-strong); }
+.agenda-cell.selected { background: #fff3f7; }
+.agenda-day { display: flex; justify-content: space-between; align-items: center; width: 100%; border: 0; background: transparent; padding: 2px 4px; font-weight: 800; cursor: pointer; border-radius: 8px; min-height: 28px; color: inherit; }
+.agenda-day:hover { background: #fde7ef; }
+.agenda-count { background: var(--pink-strong); color: #fff; border-radius: 999px; font-size: 11px; padding: 1px 7px; }
+.agenda-cell-items { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.agenda-item { display: flex; flex-wrap: wrap; align-items: center; gap: 3px 6px; width: 100%; text-align: left; background: #fff8fb; border: 1px solid #f3d5de; border-left: 4px solid var(--pink-strong); border-radius: 8px; padding: 5px 7px; cursor: pointer; font: inherit; color: inherit; min-width: 0; }
+.agenda-item:hover { background: #fde7ef; }
+.agenda-item.compact { font-size: 12px; padding: 3px 5px; gap: 2px 4px; }
+.agenda-item.compact .tag { font-size: 10px; padding: 1px 5px; }
+.agenda-time { font-weight: 700; color: #8a5a58; }
+.agenda-tags { display: flex; flex-wrap: wrap; gap: 3px; width: 100%; }
+.agenda-who { width: 100%; font-size: 13px; color: #6b4a48; }
+.agenda-more { font-size: 12px; text-align: left; }
+.st-border-nuevo { border-left-color: var(--pink-strong); }
+.st-border-aceptado { border-left-color: #b7791f; }
+.st-border-confirmado { border-left-color: #6b46c1; }
+.st-border-completado { border-left-color: #2b6cb0; }
+.st-border-entregado { border-left-color: var(--ok); }
+.st-border-cancelado { border-left-color: #9aa0a6; opacity: .7; }
+.agenda-day-list { margin-top: 18px; }
+.agenda-day-list h3 { margin: 0 0 10px; }
+.agenda-list { display: grid; gap: 8px; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); }
+.agenda-list .agenda-item { padding: 10px 12px; font-size: 15px; }
+@media (max-width: 760px) {
+  .agenda-grid { gap: 3px; }
+  .agenda-cell { min-height: 52px; padding: 2px; border-radius: 8px; }
+  .agenda-cell-items { display: none; }
+  .agenda-day { flex-direction: column; gap: 2px; padding: 2px; }
+  .agenda-title { font-size: 18px; min-width: 0; }
+}
+
+/* Sección de contacto: texto en negro y negrita, en ambos idiomas */
+#contacto h2, #contacto p, #contacto p a, #contacto .map-links a { color: #000; font-weight: 800; }
+#contacto p a, #contacto .map-links a { text-decoration: underline; }

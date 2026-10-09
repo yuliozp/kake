@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
-import { createOrder, findByClientRef, getOrderSummary, listOrders, priceOrder, rateLimit } from "@/lib/db";
-import { notifyCustomerConfirmed, notifyCustomerReceived, notifyNewOrder } from "@/lib/notify";
+import { createOrder, findByClientRef, listOrders, priceOrder, rateLimit } from "@/lib/db";
+import { notifyCustomerReceived, notifyNewOrder } from "@/lib/notify";
 import { customerUrl, karlaUrl, signLink, siteUrl } from "@/lib/links";
 import { isAdmin } from "@/lib/auth";
 import { clientIp, depositFor, isISODate, isShipping, isUploadedImage, MAX_DECOR_PHOTOS, MIN_TIME, minDeliveryDate, sameOrigin, str } from "@/lib/validate";
@@ -11,7 +11,7 @@ const fail = (error, status = 400) => NextResponse.json({ error }, { status });
 
 const duplicate = (o) => NextResponse.json({
   orderNumber: o.order_number, total: Number(o.total), duplicate: true, pending: [],
-  confirmed: o.status === "confirmado",
+  confirmed: false,
   ...(o.id ? { trackPath: `/mi-pedido/${o.id}?t=${signLink("cliente", o.id)}`, id: o.id, t: signLink("cliente", o.id) } : {}),
 });
 
@@ -129,26 +129,22 @@ export async function POST(req) {
         decorationNotes: order.decorationNotes, decorationPhotos, cake,
       });
     }
-    const confirmed = !!cake && pending.length === 0 && total > 0;
-    const deposit = confirmed ? depositFor(total) : null;
+    // Todo pedido nuevo queda EN REVISIÓN hasta que Karla lo acepte.
     let orderId, orderNumber;
     try {
-      ({ orderId, orderNumber } = await createOrder(order, total, pending, { confirmed, deposit, cake }));
+      ({ orderId, orderNumber } = await createOrder(order, total, pending, { cake }));
     } catch (e) {
       const again = clientRef && (await findByClientRef(clientRef).catch(() => null));
       if (again) return duplicate(again);
       throw e;
     }
-    const summary = confirmed ? await getOrderSummary(orderId).catch(() => null) : null;
     const [mail] = await Promise.all([
-      notifyNewOrder({ orderNumber, order, total, pending, confirmed, deposit, karlaLink: karlaUrl(orderId), adminLink: `${siteUrl()}/admin` }),
-      confirmed && summary
-        ? notifyCustomerConfirmed({ o: summary, finalTotal: total, deposit, link: customerUrl(orderId) })
-        : notifyCustomerReceived({ order, orderNumber, total, pending, link: customerUrl(orderId) }),
+      notifyNewOrder({ orderNumber, order, total, pending, karlaLink: karlaUrl(orderId), adminLink: `${siteUrl()}/admin` }),
+      notifyCustomerReceived({ order, orderNumber, total, pending, link: customerUrl(orderId) }),
     ]);
     if (!mail.ok) console.warn("[orders:notify] no se envió el aviso", orderNumber, mail.error || mail.via);
     return NextResponse.json({
-      orderNumber, total, pending, pricePending: pending.length > 0, confirmed,
+      orderNumber, total, pending, pricePending: pending.length > 0, confirmed: false,
       deposit: pending.length ? null : depositFor(total),
       trackPath: `/mi-pedido/${orderId}?t=${signLink("cliente", orderId)}`,
       id: orderId, t: signLink("cliente", orderId),
