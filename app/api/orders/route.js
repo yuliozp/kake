@@ -72,7 +72,7 @@ export async function POST(req) {
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(customer.email)) return fail("El correo no es válido");
   if (customer.phone.replace(/\D/g, "").length < 7) return fail("El teléfono no es válido");
   if (!isISODate(body.deliveryDate)) return fail("Elige una fecha de entrega");
-  if (body.deliveryDate < minDeliveryDate()) return fail("Los pedidos se hacen con al menos 2 días de anticipación. Elige otra fecha.");
+  if (body.deliveryDate < minDeliveryDate()) return fail("La primera fecha disponible es dentro de 3 días. Elige otra fecha.");
   if (!/^\d{2}:\d{2}$/.test(body.deliveryTime || "") || body.deliveryTime < MIN_TIME) {
     return fail("La hora de entrega debe ser a partir de las 10:00 a. m.");
   }
