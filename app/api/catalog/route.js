@@ -8,11 +8,12 @@ export async function GET() {
   try {
     await hideDecorationOptions().catch(() => {});
     const data = await getCatalog();
-    data.options = (data.options || []).filter((o) => o.category !== "decoration").map((o) => (
-      o.category === "delivery" && /env[ií]o|domicilio/i.test(o.label || "")
-        ? { ...o, image: "/envio-domicilio.jpg", image_url: "/envio-domicilio.jpg" }
-        : o
-    ));
+    data.options = (data.options || []).filter((o) => o.category !== "decoration").map((o) => {
+      if (o.category !== "delivery") return o;
+      if (/env[ií]o|domicilio/i.test(o.label || "")) return { ...o, image: "/envio-domicilio.jpg", image_url: "/envio-domicilio.jpg" };
+      if (/recogida|tienda|pickup/i.test(o.label || "")) return { ...o, image: "/recogida-tienda.jpg", image_url: "/recogida-tienda.jpg" };
+      return o;
+    });
     return NextResponse.json(data);
   } catch (e) {
     console.error("[catalog]", e);
