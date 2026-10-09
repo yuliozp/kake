@@ -70,14 +70,6 @@ function CakeGrid({ cakes, selectedId, custom, showCustom, onPick, onCustom }) {
     <>
       <CakeFilter cakes={cakes} value={group} onChange={setGroup} />
       <div className="cake-grid" role="radiogroup" aria-label={t.cakePick}>
-        {shown.map((c) => {
-          const isOn = selectedId === c.id;
-          return (
-            <button type="button" role="radio" aria-checked={isOn} key={c.id} className={"cake-card" + (isOn ? " selected" : "")} onClick={() => onPick(c)}>
-              <CakeCardBody cake={c} />
-            </button>
-          );
-        })}
         {showCustom && (
           <button type="button" role="radio" aria-checked={custom} className={"cake-card custom" + (custom ? " selected" : "")} onClick={onCustom}>
             <span className="cake-body">
@@ -87,6 +79,14 @@ function CakeGrid({ cakes, selectedId, custom, showCustom, onPick, onCustom }) {
             </span>
           </button>
         )}
+        {shown.map((c) => {
+          const isOn = selectedId === c.id;
+          return (
+            <button type="button" role="radio" aria-checked={isOn} key={c.id} className={"cake-card" + (isOn ? " selected" : "")} onClick={() => onPick(c)}>
+              <CakeCardBody cake={c} />
+            </button>
+          );
+        })}
       </div>
     </>
   );
@@ -134,9 +134,11 @@ export default function PedidoPage() {
     fetch("/api/catalog").then((r) => r.json()).then((d) => {
       if (Array.isArray(d.options)) setCatalog({ options: d.options, designs: d.designs || [], cakes: d.cakes || [], customCake: d.customCake !== false });
       // Viene de la página del catálogo con un pastel ya elegido (/pedido?pastel=12).
-      const wanted = Number(new URLSearchParams(window.location.search).get("pastel"));
+      const qs = new URLSearchParams(window.location.search);
+      const wanted = Number(qs.get("pastel"));
       const pre = (d.cakes || []).find((c) => c.id === wanted);
       if (pre) setForm((f) => ({ ...f, cakeId: pre.id, custom: false, cakeOptions: singleChoices(pre) }));
+      else if (qs.get("medida") === "1") setForm((f) => ({ ...f, cakeId: null, custom: true }));
     }).catch(() => {}).finally(() => setLoaded(true));
   }, []);
 
