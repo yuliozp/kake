@@ -626,10 +626,12 @@ export default function PedidoPage() {
               </>
             )}
 
-            {status && <p className="alert" role="alert">{status}</p>}
-            <div className="row">
-              <button className="btn ghost" onClick={back} disabled={saving}>{t.back}</button>
-              {current.id !== "resumen" && <button className="btn" onClick={next}>{t.next}</button>}
+            <div className="step-nav">
+              {status && <p className="alert" role="alert">{status}</p>}
+              <div className="row">
+                <button className="btn ghost" onClick={back} disabled={saving}>{t.back}</button>
+                {current.id !== "resumen" && <button className="btn" onClick={next}>{t.next}</button>}
+              </div>
             </div>
           </div>
           <aside className="preview">
