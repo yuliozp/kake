@@ -9,14 +9,12 @@ export const dynamic = "force-dynamic";
 
 const fail = (error, status = 400) => NextResponse.json({ error }, { status });
 
-// Respuesta cuando el mismo formulario llega dos veces: se devuelve el pedido ya creado.
 const duplicate = (o) => NextResponse.json({
   orderNumber: o.order_number, total: Number(o.total), duplicate: true, pending: [],
   confirmed: o.status === "confirmado",
   ...(o.id ? { trackPath: `/mi-pedido/${o.id}?t=${signLink("cliente", o.id)}`, id: o.id, t: signLink("cliente", o.id) } : {}),
 });
 
-// Solo el panel admin puede ver los pedidos (contienen datos de clientes).
 export async function GET(req) {
   if (!isAdmin(req)) return fail("Sesión vencida. Vuelve a entrar.", 401);
   try {
@@ -44,7 +42,6 @@ export async function POST(req) {
     return fail("Solicitud inválida");
   }
 
-  // Campo trampa: invisible para personas, los bots lo llenan.
   if (body.website) {
     console.warn("[orders:create] bloqueado por campo trampa", clientIp(req));
     return fail("Solicitud inválida");
@@ -88,7 +85,6 @@ export async function POST(req) {
   const deliveryType = str(body.deliveryType, 120);
   const deliveryAddress = isShipping(deliveryType) ? str(body.deliveryAddress, 300) || customer.address : "";
   if (isShipping(deliveryType) && deliveryAddress.length < 6) return fail("Escribe la dirección completa para el envío.");
-  // Personalizaciones del pastel del catálogo: { "Color": "Rosa", ... }
   const cakeOptions = {};
   if (body.cakeOptions && typeof body.cakeOptions === "object" && !Array.isArray(body.cakeOptions)) {
     for (const [k, v] of Object.entries(body.cakeOptions).slice(0, 12)) cakeOptions[str(k, 40)] = str(v, 60);
@@ -112,29 +108,33 @@ export async function POST(req) {
     designLabel: str(body.designLabel, 120),
     designNotes: str(body.designNotes, 1000),
     designImage,
-    decorationLabel: str(body.decorationLabel, 120),
+    decorationLabel: "",
     decorationNotes: str(body.decorationNotes, 1000),
     decorationPhotos,
   };
 
   try {
-    const { total, pending, cake } = await priceOrder(order);
+    const priced = await priceOrder(order);
+    const pending = priced.pending || [];
+    const total = priced.total;
+    const cake = priced.cake;
+    if (designImage || decorationPhotos.length) {
+      const label = order.lang === "en" ? "Decoration" : "Decoración";
+      if (!pending.includes(label)) pending.push(label);
+      order.decorationLabel = label;
+    }
     if (cake) {
-      // Pastel del catálogo: no lleva los pasos de "arma tu pastel".
       Object.assign(order, {
         size: "", cakeFlavor: "", fillingFlavor: "", fillingCountLabel: "", designId: null, designLabel: "",
-        decorationLabel: "", decorationNotes: "", decorationPhotos: [], cake, // la foto de referencia (designImage) se conserva
+        decorationNotes: order.decorationNotes, decorationPhotos, cake,
       });
     }
-    // Pastel del catálogo sin envío ni nada por cotizar: queda CONFIRMADO de inmediato.
-    // (Un pastel "a tu medida" siempre lo revisa Karla antes de confirmar.)
     const confirmed = !!cake && pending.length === 0 && total > 0;
     const deposit = confirmed ? depositFor(total) : null;
     let orderId, orderNumber;
     try {
       ({ orderId, orderNumber } = await createOrder(order, total, pending, { confirmed, deposit, cake }));
     } catch (e) {
-      // Dos envíos simultáneos del mismo formulario: gana el primero.
       const again = clientRef && (await findByClientRef(clientRef).catch(() => null));
       if (again) return duplicate(again);
       throw e;
@@ -151,7 +151,6 @@ export async function POST(req) {
       orderNumber, total, pending, pricePending: pending.length > 0, confirmed,
       deposit: pending.length ? null : depositFor(total),
       trackPath: `/mi-pedido/${orderId}?t=${signLink("cliente", orderId)}`,
-      // Para pasar directo al pago del anticipo cuando el pedido queda confirmado.
       id: orderId, t: signLink("cliente", orderId),
       emailed: mail.ok,
     });
