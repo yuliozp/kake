@@ -35,7 +35,7 @@ const depositFor = (n) => (Number(n) > 0 ? Math.ceil(Number(n) / 2 / 5) * 5 : 0)
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const money = (n) => "$" + Number(n || 0).toFixed(2);
 
-function OptionGrid({ items, selected, onPick, L }) {
+function OptionGrid({ items, selected, onPick, L, note }) {
   const { t } = useI18n();
   return (
     <div className="grid" role="radiogroup">
@@ -48,6 +48,7 @@ function OptionGrid({ items, selected, onPick, L }) {
             {img && <img src={img} alt="" loading="lazy" />}
             <span className="meta">
               <strong>{L(o.label)}</strong>
+              {note && <span className="hint">{note}</span>}
               <span className="price">{o.price_on_request ? t.priceTbd : Number(o.price) > 0 ? "+ " + money(o.price) : t.included}</span>
             </span>
           </button>
@@ -533,7 +534,7 @@ export default function PedidoPage() {
                 <p className="hint">{t.badDate2} {t.badTime}</p>
               </>
             )}
-            {current.id === "size" && <OptionGrid items={by("size")} selected={form.size} L={L} onPick={(o) => set({ size: o.label })} />}
+            {current.id === "size" && <OptionGrid items={by("size")} selected={form.size} L={L} note={t.decoCustom} onPick={(o) => set({ size: o.label })} />}
             {current.id === "sabor" && <OptionGrid items={by("cake_flavor")} selected={form.cakeFlavor} L={L} onPick={(o) => set({ cakeFlavor: o.label })} />}
             {current.id === "relleno" && <OptionGrid items={by("filling")} selected={form.fillingFlavor} L={L} onPick={(o) => set({ fillingFlavor: o.label })} />}
             {current.id === "capas" && <OptionGrid items={by("filling_count")} selected={form.fillingCount} L={L} onPick={(o) => set({ fillingCount: o.label })} />}
