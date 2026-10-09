@@ -419,6 +419,16 @@ export default function PedidoPage() {
 
   const progress = Math.round(((step + 1) / STEPS.length) * 100);
 
+  const stepNav = () => (
+    <>
+      {status && <p className="alert" role="alert">{status}</p>}
+      <div className="row step-nav">
+        <button className="btn ghost" onClick={back} disabled={saving}>{t.back}</button>
+        {current.id !== "resumen" && <button className="btn" onClick={next}>{t.next}</button>}
+      </div>
+    </>
+  );
+
   return (
     <main id="contenido" className="wrap">
       <div className="modal-bg">
@@ -626,11 +636,8 @@ export default function PedidoPage() {
               </>
             )}
 
-            {status && <p className="alert" role="alert">{status}</p>}
-            <div className="row">
-              <button className="btn ghost" onClick={back} disabled={saving}>{t.back}</button>
-              {current.id !== "resumen" && <button className="btn" onClick={next}>{t.next}</button>}
-            </div>
+            {/* En celular los botones van al final del paso; en PC, debajo de la foto y el precio. */}
+            <div className="step-nav-mobile">{stepNav()}</div>
             {current.id !== "resumen" && !validate(current.id) && (
               <button className="btn step-float" onClick={next}>{t.next}</button>
             )}
@@ -640,6 +647,7 @@ export default function PedidoPage() {
             <p className="note" style={{ margin: "10px 0 2px" }}>{instant ? t.totalFinal : t.total}</p>
             <div className="total">{money(total)}</div>
             {pending.length > 0 && <p className="note" style={{ margin: 0 }}>+ {t.toConfirm}</p>}
+            <div className="step-nav-desk">{stepNav()}</div>
           </aside>
         </div>
       </div>
