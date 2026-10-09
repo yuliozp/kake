@@ -26,7 +26,7 @@ function prettyTime(hhmm, lang) {
   return new Date(2000, 0, 1, h, m).toLocaleTimeString(lang === "en" ? "en-US" : "es-US", { hour: "numeric", minute: "2-digit" });
 }
 
-const MIN_DAYS = 2;       // entrega con al menos 2 días de anticipación
+const MIN_DAYS = 3;       // primera fecha: dentro de 3 días (hoy viernes → lunes)
 const MIN_TIME = "10:00"; // desde las 10:00 a. m.
 const MAX_PHOTOS = 4;
 
