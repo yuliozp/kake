@@ -20,7 +20,13 @@ export const metadata = {
     description: "Pide tu pastel personalizado en minutos. Custom cakes in Port Arthur, TX.",
     type: "website",
     locale: "es_US",
-    images: ["https://images.unsplash.com/photo-1578985545062-69928b1d9587?w=1200&q=80"],
+    images: [{ url: "/og-logo.jpg", width: 1200, height: 630, alt: "Logo de Karla's Bake" }],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Karla's Bake — Pasteles personalizados",
+    description: "Pide tu pastel personalizado en minutos. Custom cakes in Port Arthur, TX.",
+    images: ["/og-logo.jpg"],
   },
 };
 
