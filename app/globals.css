@@ -424,19 +424,11 @@ a.cake-card { color: inherit; width: 100%; }
 .cake-card.product .cake-order { margin-top: auto; }
 .cake-card.product .cake-free { margin-bottom: 8px; }
 
-.step-nav {
+.step-float {
   position: fixed;
   right: 16px;
   bottom: max(16px, env(safe-area-inset-bottom));
   z-index: 40;
-  margin: 0;
-  background: #fff;
-  border: 2px solid #f0bfd0;
-  border-radius: 18px;
-  padding: 8px;
-  box-shadow: 0 10px 28px rgba(90, 30, 50, .18);
-  max-width: calc(100vw - 32px);
+  box-shadow: 0 10px 28px rgba(90, 30, 50, .28);
 }
-.step-nav .row { margin-top: 0; justify-content: flex-end; }
-.step-nav .alert { margin: 0 0 8px; }
-.modal { padding-bottom: 96px; }
+.modal { padding-bottom: 84px; }
