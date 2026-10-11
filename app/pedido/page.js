@@ -31,7 +31,7 @@ const MIN_TIME = "10:00"; // desde las 10:00 a. m.
 const MAX_PHOTOS = 4;
 
 const isShipping = (label) => /env[ií]o|domicilio|delivery/i.test(label || "");
-const depositFor = (n) => (Number(n) > 0 ? Math.ceil(Number(n) / 2 / 5) * 5 : 0);
+const depositFor = (n) => { const v = Number(n) || 0; if (v <= 0) return 0; return Math.min(v, Math.ceil(v / 2 / 5) * 5); };
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const money = (n) => "$" + Number(n || 0).toFixed(2);
 
