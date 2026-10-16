@@ -14,6 +14,14 @@ export async function GET() {
       if (/recogida|tienda|pickup/i.test(o.label || "")) return { ...o, image: "/recogida-tienda.jpg", image_url: "/recogida-tienda.jpg" };
       return o;
     });
+    // Quitar el rojo de la personalización de color en todos los pasteles.
+    for (const cake of data.cakes || []) {
+      for (const opt of cake.options || []) {
+        if (/color/i.test(opt.name || "") && Array.isArray(opt.choices)) {
+          opt.choices = opt.choices.filter((c) => !/^rojo$/i.test(String(c).trim()));
+        }
+      }
+    }
     return NextResponse.json(data);
   } catch (e) {
     console.error("[catalog]", e);
