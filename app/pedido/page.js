@@ -327,7 +327,7 @@ export default function PedidoPage() {
             decorationNotes: isPremiumDeco ? form.decorationNotes : "",
             decorationPhotos: isPremiumDeco ? form.decorationPhotos : [],
           } : {
-            cakeId: cake.id, cakeOptions: form.cakeOptions, designNotes: form.cakeNotes, designImage: form.uploadPreview,
+            cakeId: cake.id, cakeOptions: form.cakeOptions, designNotes: form.cakeNotes, designImage: "",
           }),
         }),
       });
@@ -357,7 +357,7 @@ export default function PedidoPage() {
     ["pastel", t.cake, cake ? `${L(cake.name)} · ${money(cake.price)}` : ""],
     ...(cake?.options || []).map((g) => ["personaliza", L(g.name), L(form.cakeOptions[g.name])]),
     form.cakeNotes && ["personaliza", t.notesShort, form.cakeNotes],
-    form.uploadPreview && ["personaliza", t.refPhoto, t.photoAttached],
+    
   ]).concat([
     has("delivery") && ["envio", t.mode, L(form.deliveryType) + (isShipping(form.deliveryType) && pending.length ? ` (${t.priceTbd})` : "")],
     has("delivery") && isShipping(form.deliveryType) && ["envio", t.address, shipAddress],
@@ -366,7 +366,7 @@ export default function PedidoPage() {
   ]).filter(Boolean);
 
   function pickCake(c) {
-    set({ cakeId: c.id, custom: false, cakeOptions: form.cakeId === c.id ? form.cakeOptions : singleChoices(c) });
+    set({ cakeId: c.id, custom: false, cakeOptions: form.cakeId === c.id ? form.cakeOptions : singleChoices(c), uploadPreview: "" });
     setStatus("");
   }
 
@@ -489,14 +489,6 @@ export default function PedidoPage() {
                 ))}
                 <label htmlFor="f-cake-notes">{t.cakeNotes}</label>
                 <textarea id="f-cake-notes" rows={2} maxLength={1000} value={form.cakeNotes} onChange={(e) => set({ cakeNotes: e.target.value })} />
-                <label htmlFor="f-ref-photo">{t.refPhotoLabel}</label>
-                <input id="f-ref-photo" type="file" accept="image/*" onChange={onUpload} />
-                {form.uploadPreview && (
-                  <div className="thumb">
-                    <img src={form.uploadPreview} alt="" />
-                    <button type="button" className="btn ghost small" onClick={() => set({ uploadPreview: "" })}>{t.removePhoto}</button>
-                  </div>
-                )}
               </>
             )}
             {current.id === "envio" && (
