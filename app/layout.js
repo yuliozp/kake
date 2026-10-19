@@ -4,6 +4,7 @@ import { LanguageProvider } from "@/components/LanguageProvider";
 import Nav from "@/components/Nav";
 import Footer from "@/components/Footer";
 import { getSiteMenu } from "@/lib/db";
+import { Analytics } from "@vercel/analytics/next";
 
 const nunito = Nunito({ subsets: ["latin"], weight: ["400", "600", "700", "800", "900"], display: "swap" });
 
@@ -44,6 +45,7 @@ export default async function RootLayout({ children }) {
           {children}
           <Footer />
         </LanguageProvider>
+        <Analytics />
       </body>
     </html>
   );
