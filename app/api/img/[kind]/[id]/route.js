@@ -20,7 +20,7 @@ export async function GET(_req, { params }) {
       headers: {
         "Content-Type": m[1],
         // La URL lleva ?v=<hash>, así que cambia sola cuando se edita la foto.
-        "Cache-Control": "public, max-age=31536000, immutable",
+        "Cache-Control": "public, max-age=0, must-revalidate",
       },
     });
   } catch (e) {
