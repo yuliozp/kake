@@ -2,9 +2,9 @@ import HomePage from "@/components/HomePage";
 import { getGoogleReviews } from "@/lib/google";
 import { getSitePhotos } from "@/lib/db";
 
-// La página de inicio se regenera como máximo una vez al día (reseñas de Google)
-// y cada vez que se cambian las fotos desde "Personalizar web" en el panel.
-export const revalidate = 86400;
+// Portada fresca: lo editado en admin se ve al recargar. Las reseñas se piden en cada visita.
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
 
 export default async function Home() {
   const [es, en, photos] = await Promise.all([
