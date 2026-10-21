@@ -132,7 +132,7 @@ export default function PedidoPage() {
   const set = (patch) => setForm((f) => ({ ...f, ...patch }));
 
   useEffect(() => {
-    fetch("/api/catalog").then((r) => r.json()).then((d) => {
+    fetch("/api/catalog", { cache: "no-store" }).then((r) => r.json()).then((d) => {
       if (Array.isArray(d.options)) setCatalog({ options: d.options, designs: d.designs || [], cakes: d.cakes || [], customCake: d.customCake !== false });
       // Viene de la página del catálogo con un pastel ya elegido (/pedido?pastel=12).
       const qs = new URLSearchParams(window.location.search);
