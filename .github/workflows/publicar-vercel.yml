@@ -1,0 +1,25 @@
+# Publica en Vercel los cambios que sube Claude.
+# Vercel ya publica solo los cambios de Yulio; los de Claude (autor noreply@anthropic.com)
+# no los toma, así que esta tarea llama al Deploy Hook del proyecto.
+# El enlace del Deploy Hook se guarda como secreto del repositorio: VERCEL_DEPLOY_HOOK.
+name: Publicar en Vercel
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  publicar:
+    if: github.event.head_commit.author.email == 'noreply@anthropic.com'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Llamar al Deploy Hook de Vercel
+        env:
+          HOOK: ${{ secrets.VERCEL_DEPLOY_HOOK }}
+        run: |
+          if [ -z "$HOOK" ]; then
+            echo "Falta el secreto VERCEL_DEPLOY_HOOK en GitHub (Settings > Secrets and variables > Actions)."
+            exit 1
+          fi
+          curl -fsS -X POST "$HOOK" > /dev/null
+          echo "Publicación solicitada a Vercel."
