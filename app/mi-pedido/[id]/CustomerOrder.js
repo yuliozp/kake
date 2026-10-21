@@ -10,7 +10,7 @@ const TXT = {
   es: {
     title: "Tu pedido", loading: "Cargando tu pedido…", when: "Entrega", mode: "Modalidad", address: "Dirección",
     cake: "Pastel", cakeOptions: "Personalización", notes: "Notas", subtotal: "Subtotal",
-    size: "Tamaño", flavor: "Sabor / relleno", design: "Diseño", deco: "Decoración",
+    size: "Tamaño", model: "Modelo del catálogo", flavor: "Sabor / relleno", design: "Diseño", deco: "Decoración",
     reviewing: "Tu pedido está en revisión. Karla lo está revisando y confirmará el costo pendiente. Cuando lo acepte, te enviaremos un correo con el total y el enlace para pagar el anticipo.",
     reviewingSimple: "Tu pedido está en revisión. Cuando Karla lo acepte, te enviaremos un correo con el enlace para pagar el anticipo y reservar tu fecha.",
     pendingItems: "Por confirmar", estimate: "Total estimado",
@@ -32,7 +32,7 @@ const TXT = {
   en: {
     title: "Your order", loading: "Loading your order…", when: "Delivery", mode: "Method", address: "Address",
     cake: "Cake", cakeOptions: "Customization", notes: "Notes", subtotal: "Subtotal",
-    size: "Size", flavor: "Flavor / filling", design: "Design", deco: "Decoration",
+    size: "Size", model: "Catalog model", flavor: "Flavor / filling", design: "Design", deco: "Decoration",
     reviewing: "Your order is under review. Karla is reviewing it and will confirm the pending cost. Once she accepts it, we'll email you the total and the link to pay the deposit.",
     reviewingSimple: "Your order is under review. Once Karla accepts it, we'll email you the link to pay the deposit and hold your date.",
     pendingItems: "To be confirmed", estimate: "Estimated total",
@@ -225,7 +225,9 @@ export default function CustomerOrder({ id, token, paidSession = "", cancelled =
           {o.cake_name && <div><dt>{t.cake}</dt><dd>{translateLabel(lang, o.cake_name)}{o.cake_details ? ` · ${trFact(lang, o.cake_details)}` : ""}</dd></div>}
           {o.cake_options && <div><dt>{t.cakeOptions}</dt><dd>{o.cake_options}</dd></div>}
           {o.notes && <div><dt>{t.notes}</dt><dd>{o.notes}</dd></div>}
-          {o.size_label && <div><dt>{t.size}</dt><dd>{o.size_label}</dd></div>}
+          {o.size_label && <div><dt>{t.size}</dt><dd>{trFact(lang, o.size_label)}</dd></div>}
+          {o.model_name && <div><dt>{t.model}</dt><dd>{translateLabel(lang, o.model_name)}</dd></div>}
+          {o.color && <div><dt>Color</dt><dd>{translateLabel(lang, o.color)}</dd></div>}
           {(o.cake_flavor || o.filling_flavor) && <div><dt>{t.flavor}</dt><dd>{[o.cake_flavor, o.filling_flavor].filter(Boolean).join(" · ")}</dd></div>}
           {o.design_label && <div><dt>{t.design}</dt><dd>{o.design_label}</dd></div>}
           {o.decoration_label && <div><dt>{t.deco}</dt><dd>{o.decoration_label}</dd></div>}

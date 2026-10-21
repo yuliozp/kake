@@ -36,7 +36,8 @@ export function CakeFilter({ cakes, value, onChange }) {
 }
 
 // Contenido de una tarjeta: foto, nombre, precio, porciones, tamaño y qué se puede elegir.
-export function CakeCardBody({ cake: c, footer }) {
+// model: se muestra como modelo de referencia (sin precio ni personalizaciones).
+export function CakeCardBody({ cake: c, footer, model = false }) {
   const { t, lang } = useI18n();
   const L = (v) => translateLabel(lang, v);
   // "Porciones: 20-24" (sin repetir la palabra que ya dice la etiqueta).
@@ -46,14 +47,14 @@ export function CakeCardBody({ cake: c, footer }) {
     <>
       {c.image && <img src={c.image} alt="" loading="lazy" />}
       <span className="cake-body">
-        <span className="cake-top"><strong>{L(c.name)}</strong><span className="price">{money(c.price)}</span></span>
+        <span className="cake-top"><strong>{L(c.name)}</strong>{!model && <span className="price">{money(c.price)}</span>}</span>
         {facts.length > 0 && (
           <span className="cake-facts">
             {facts.map(([k, v]) => <span key={k}><em>{k}:</em> {v}</span>)}
           </span>
         )}
         {c.description && <span className="cake-desc">{L(c.description)}</span>}
-        {(c.options || []).length > 0 && (
+        {!model && (c.options || []).length > 0 && (
           <span className="cake-free">{t.canCustomize}: {c.options.map((g) => L(g.name).toLowerCase()).join(", ")}</span>
         )}
         {footer}

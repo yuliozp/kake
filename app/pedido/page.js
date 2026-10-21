@@ -60,7 +60,7 @@ function OptionGrid({ items, selected, onPick, L, note }) {
 }
 
 // Pasteles del catálogo para elegir, con filtro por tamaño cuando son muchos.
-function CakeGrid({ cakes, selectedId, custom, showCustom, onPick, onCustom }) {
+function CakeGrid({ cakes, selectedId, custom, showCustom, onPick, onCustom, asModel = false }) {
   const { t } = useI18n();
   const [group, setGroup] = useState("");
   const shown = group ? cakes.filter((c) => cakeGroup(c) === group) : cakes;
@@ -85,7 +85,7 @@ function CakeGrid({ cakes, selectedId, custom, showCustom, onPick, onCustom }) {
           const isOn = selectedId === c.id;
           return (
             <button type="button" role="radio" aria-checked={isOn} key={c.id} className={"cake-card" + (isOn ? " selected" : "")} onClick={() => onPick(c)}>
-              <CakeCardBody cake={c} />
+              <CakeCardBody cake={c} model={asModel} />
             </button>
           );
         })}
@@ -106,7 +106,7 @@ const EMPTY = {
   name: "", phone: "", email: "", address: "", smsOptIn: false,
   deliveryDate: localISO(MIN_DAYS), deliveryTime: MIN_TIME,
   deliveryType: "", deliveryAddress: "",
-  size: "", sizeId: null, sizePrice: 0, sizeImage: "", cakeFlavor: "", fillingFlavor: "", fillingCount: "",
+  size: "", sizeId: null, sizePrice: 0, sizeImage: "", modelId: null, color: "", cakeFlavor: "", fillingFlavor: "", fillingCount: "",
   designId: null, designLabel: "", designImage: "", designPrice: 0, uploadPreview: "", designNotes: "",
   decorationLabel: "", decorationNotes: "", decorationPhotos: [],
 };
@@ -159,26 +159,35 @@ export default function PedidoPage() {
   const cake = cakes.find((c) => c.id === form.cakeId) || null;
   // "A tu medida": cuando el cliente lo elige, o cuando todavía no hay pasteles en el catálogo.
   const customMode = !hasCakes || (form.custom && !cake);
+  // Pastel del catálogo elegido como modelo de referencia en el pastel a tu medida (no se cobra).
+  const model = cakes.find((c) => c.id === form.modelId) || null;
+  // Colores: los mismos que ofrece el catálogo (los administra Karla en cada pastel).
+  const colorChoices = useMemo(() => {
+    for (const c of cakes) {
+      const g = (c.options || []).find((x) => /^color$/i.test(x.name));
+      if (g?.choices?.length) return g.choices;
+    }
+    return [];
+  }, [cakes]);
 
   // Orden: datos del cliente → pastel del catálogo → personalización → recogida o entrega → confirmar.
   const STEPS = useMemo(() => {
     const s = [{ id: "cliente" }];
     if (hasCakes) s.push({ id: "pastel" });
     if (customMode) {
-      // Pastel a tu medida: tamaño (punto de partida) → diseño (suma su precio) → sabores → decoración.
+      // Pastel a tu medida: tamaño (precio base) → modelo del catálogo (referencia, sin costo)
+      // → diseño (suma su precio) → color y sabores → recogida o entrega.
       if ((catalog.sizeCakes || []).length || has("size")) s.push({ id: "size" });
+      if (hasCakes) s.push({ id: "modelo" });
       s.push({ id: "diseno" });
-      if (has("cake_flavor")) s.push({ id: "sabor" });
-      if (has("filling")) s.push({ id: "relleno" });
-      if (has("filling_count")) s.push({ id: "capas" });
-      if (has("decoration")) s.push({ id: "decoracion" });
+      if (colorChoices.length || has("cake_flavor") || has("filling")) s.push({ id: "sabores" });
     } else {
       s.push({ id: "personaliza" });
     }
     s.push({ id: "envio" }, { id: "resumen" });
     return s;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [catalog, customMode]);
+  }, [catalog, customMode, colorChoices]);
 
   // Total conocido + lo que queda "por confirmar" (decoración premium, envío a domicilio).
   const { total, pending } = useMemo(() => {
@@ -215,7 +224,7 @@ export default function PedidoPage() {
   const shipAddress = form.deliveryAddress || form.address;
   const deposit = depositFor(total);
 
-  const previewImg = (!customMode && cake?.image) || form.sizeImage || form.decorationPhotos[0] || form.uploadPreview || form.designImage || find("size", form.size)?.image || IMAGES.hero;
+  const previewImg = (!customMode && cake?.image) || (customMode && (form.designImage || model?.image)) || form.sizeImage || form.decorationPhotos[0] || form.uploadPreview || form.designImage || find("size", form.size)?.image || IMAGES.hero;
   const current = STEPS[Math.min(step, STEPS.length - 1)];
 
   // Al cambiar de paso, el foco va al título para que el lector de pantalla lo anuncie.
@@ -244,6 +253,12 @@ export default function PedidoPage() {
       if (!form.deliveryTime || form.deliveryTime < MIN_TIME) return t.badTime;
     }
     if (id === "size" && !form.size) return t.needSize;
+    if (id === "modelo" && !model) return t.needModel;
+    if (id === "sabores") {
+      if (colorChoices.length && !form.color) return t.needColor;
+      if (has("cake_flavor") && !form.cakeFlavor) return t.needFlavor;
+      if (has("filling") && !form.fillingFlavor) return t.needFilling;
+    }
     if (id === "sabor" && !form.cakeFlavor) return t.needFlavor;
     if (id === "relleno" && !form.fillingFlavor) return t.needFilling;
     if (id === "diseno" && !form.designLabel && !form.designNotes.trim() && !form.uploadPreview) return t.needDesign;
@@ -326,7 +341,8 @@ export default function PedidoPage() {
           deliveryAddress: isShipping(form.deliveryType) ? shipAddress : "",
           deliveryDate: form.deliveryDate, deliveryTime: form.deliveryTime,
           ...(customMode ? {
-            size: form.size, sizeId: form.sizeId, cakeFlavor: form.cakeFlavor, fillingFlavor: form.fillingFlavor, fillingCount: form.fillingCount,
+            size: form.size, sizeId: form.sizeId, modelId: form.modelId, color: form.color,
+            cakeFlavor: form.cakeFlavor, fillingFlavor: form.fillingFlavor, fillingCount: "",
             designId: form.designId,
             designLabel: form.designLabel || (form.uploadPreview || form.designNotes ? t.ownDesign : ""),
             designNotes: form.designNotes,
@@ -353,14 +369,12 @@ export default function PedidoPage() {
   const summary = (customMode ? [
     hasCakes && ["pastel", t.cake, t.customTitle],
     (has("size") || form.sizeId) && ["size", t.steps.size, (form.sizeId ? trFact(lang, form.size) : L(form.size)) + (form.sizeId ? ` · ${money(form.sizePrice)}` : "")],
+    hasCakes && ["modelo", t.steps.modelo, model ? L(model.name) : ""],
     ["diseno", t.steps.diseno, (form.designLabel || (form.uploadPreview ? t.ownDesign : t.noDesign)) + (Number(form.designPrice) > 0 ? ` · + ${money(form.designPrice)}` : "")],
     form.designNotes && ["diseno", t.notes, form.designNotes],
-    has("cake_flavor") && ["sabor", t.steps.sabor, L(form.cakeFlavor)],
-    has("filling") && ["relleno", t.steps.relleno, L(form.fillingFlavor)],
-    has("filling_count") && ["capas", t.steps.capas, L(form.fillingCount)],
-    has("decoration") && ["decoracion", t.steps.decoracion, L(form.decorationLabel) + (isPremiumDeco ? ` (${t.priceTbd})` : "")],
-    isPremiumDeco && form.decorationNotes && ["decoracion", t.notes, form.decorationNotes],
-    isPremiumDeco && form.decorationPhotos.length > 0 && ["decoracion", lang === "en" ? "Photos" : "Fotos", `${form.decorationPhotos.length}`],
+    colorChoices.length > 0 && ["sabores", L("Color"), L(form.color)],
+    has("cake_flavor") && ["sabores", t.steps.sabor, L(form.cakeFlavor)],
+    has("filling") && ["sabores", t.steps.relleno, L(form.fillingFlavor)],
   ] : [
     ["pastel", t.cake, cake ? `${L(cake.name)} · ${money(cake.price)}` : ""],
     ...(cake?.options || []).map((g) => ["personaliza", L(g.name), L(form.cakeOptions[g.name])]),
@@ -531,9 +545,35 @@ export default function PedidoPage() {
                     onPick={(o) => set({ size: o.full, sizeId: o.id, sizePrice: Number(o.price || 0), sizeImage: o.image || "" })} />
                 : <OptionGrid items={by("size")} selected={form.size} L={L} note={t.decoCustom} onPick={(o) => set({ size: o.label, sizeId: null, sizePrice: 0, sizeImage: "" })} />
             )}
-            {current.id === "sabor" && <OptionGrid items={by("cake_flavor")} selected={form.cakeFlavor} L={L} onPick={(o) => set({ cakeFlavor: o.label })} />}
-            {current.id === "relleno" && <OptionGrid items={by("filling")} selected={form.fillingFlavor} L={L} onPick={(o) => set({ fillingFlavor: o.label })} />}
-            {current.id === "capas" && <OptionGrid items={by("filling_count")} selected={form.fillingCount} L={L} onPick={(o) => set({ fillingCount: o.label })} />}
+            {current.id === "modelo" && (
+              <>
+                <p className="note" style={{ marginTop: 0 }}>{t.modelHint}</p>
+                <CakeGrid cakes={cakes} selectedId={form.modelId} custom={false} showCustom={false} asModel
+                  onPick={(c) => { set({ modelId: c.id }); setStatus(""); }} onCustom={() => {}} />
+              </>
+            )}
+            {current.id === "sabores" && (
+              <>
+                <p className="free-tag">{t.freeCustom}</p>
+                {[
+                  colorChoices.length > 0 && ["color", L("Color"), colorChoices, form.color, (v) => set({ color: v })],
+                  has("cake_flavor") && ["sabor", t.steps.sabor, by("cake_flavor").map((o) => o.label), form.cakeFlavor, (v) => set({ cakeFlavor: v })],
+                  has("filling") && ["relleno", t.steps.relleno, by("filling").map((o) => o.label), form.fillingFlavor, (v) => set({ fillingFlavor: v })],
+                ].filter(Boolean).map(([key, title, choices, value, pick]) => (
+                  <fieldset key={key} className="opt-group">
+                    <legend>{title} *</legend>
+                    <div className="chips" role="radiogroup" aria-label={title}>
+                      {choices.map((c) => (
+                        <button type="button" role="radio" aria-checked={value === c} key={c} className={"chip big" + (value === c ? " on" : "")}
+                          onClick={() => { pick(c); setStatus(""); }}>
+                          {L(c)}
+                        </button>
+                      ))}
+                    </div>
+                  </fieldset>
+                ))}
+              </>
+            )}
             {current.id === "diseno" && (
               <>
                 <p className="note">{t.designHint}</p>

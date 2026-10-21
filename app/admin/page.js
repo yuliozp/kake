@@ -347,7 +347,7 @@ function OrderCard({ o, open, today, onToggle, onStatus, onSaved, flash, onAuthE
       <div className="order-mid">
         <div>
           <div className="order-customer">{o.customer_name}</div>
-          <div className="note">{(o.cake_name ? [o.cake_name, o.cake_options] : [o.size_label, o.cake_flavor, o.filling_flavor]).filter(Boolean).join(" · ") || "—"}</div>
+          <div className="note">{(o.cake_name ? [o.cake_name, o.cake_options] : [o.size_label, o.model_name && `Modelo: ${o.model_name}`, o.color, o.cake_flavor, o.filling_flavor]).filter(Boolean).join(" · ") || "—"}</div>
           {needsKarla && <span className="status-flag">{o.price_pending ? `Por aceptar · costo por confirmar: ${o.pending_items}` : "Por aceptar"}</span>}
           {waitingCustomer && <span className="status-flag wait">Esperando el anticipo de {money(o.deposit_amount)}</span>}
         </div>
@@ -384,7 +384,11 @@ function OrderCard({ o, open, today, onToggle, onStatus, onSaved, flash, onAuthE
                 </>
               ) : (
                 <>
-                  <div><dt>Rellenos</dt><dd>{o.filling_count || "—"}</dd></div>
+                  <div><dt>Tamaño</dt><dd>{o.size_label || "—"}</dd></div>
+                  {o.model_name && <div><dt>Modelo del catálogo</dt><dd>{o.model_name}</dd></div>}
+                  {o.color && <div><dt>Color</dt><dd>{o.color}</dd></div>}
+                  <div><dt>Sabor / relleno</dt><dd>{[o.cake_flavor, o.filling_flavor].filter(Boolean).join(" · ") || "—"}</dd></div>
+                  {o.filling_count && <div><dt>Rellenos</dt><dd>{o.filling_count}</dd></div>}
                   <div><dt>Diseño</dt><dd>{o.design_label || "—"}</dd></div>
                   <div><dt>Descripción</dt><dd>{o.design_notes || "—"}</dd></div>
                 </>

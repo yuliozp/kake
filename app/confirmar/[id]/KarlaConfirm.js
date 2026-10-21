@@ -90,6 +90,9 @@ export default function KarlaConfirm({ id, token }) {
           ) : (
             <>
               <div><dt>Tamaño</dt><dd>{o.size_label || "—"}</dd></div>
+              {o.model_name && <div><dt>Modelo del catálogo</dt><dd>{o.model_name}</dd></div>}
+              {o.model_id && <div><dt></dt><dd><img src={`/api/img/cake/${o.model_id}`} alt={`Modelo: ${o.model_name}`} style={{ maxWidth: 160, borderRadius: 12 }} /></dd></div>}
+              {o.color && <div><dt>Color</dt><dd>{o.color}</dd></div>}
               <div><dt>Sabor / relleno</dt><dd>{[o.cake_flavor, o.filling_flavor].filter(Boolean).join(" · ") || "—"}</dd></div>
               <div><dt>Diseño</dt><dd>{o.design_label || "—"}</dd></div>
               {o.design_notes && <div><dt>Descripción</dt><dd>{o.design_notes}</dd></div>}

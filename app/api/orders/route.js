@@ -102,6 +102,8 @@ export async function POST(req) {
     deliveryTime: body.deliveryTime,
     size: str(body.size, 120),
     sizeId: /^\d+$/.test(String(body.sizeId ?? "")) ? Number(body.sizeId) : null,
+    modelId: /^\d+$/.test(String(body.modelId ?? "")) ? Number(body.modelId) : null,
+    color: str(body.color, 40),
     cakeFlavor: str(body.cakeFlavor, 120),
     fillingFlavor: str(body.fillingFlavor, 120),
     fillingCountLabel: str(body.fillingCount, 120),
