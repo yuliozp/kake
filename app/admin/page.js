@@ -189,7 +189,7 @@ export default function AdminPage() {
       <div className="admin-bar card">
         <Logo size={44} />
         <div className="tabs" role="tablist" aria-label="Secciones del panel">
-          {[["pedidos", `Pedidos (${orders.length})`], ["agenda", "Agenda"], ["pasteles", "Pasteles"], ["catalogo", "Opciones y envío"], ["disenos", "Diseños"], ["web", "Personalizar sitio"]].map(([id, name]) => (
+          {[["pedidos", `Pedidos (${orders.length})`], ["agenda", "Agenda"], ["pasteles", "Catálogo"], ["tamanos", "Tamaños"], ["catalogo", "Opciones y envío"], ["disenos", "Diseños"], ["web", "Personalizar sitio"]].map(([id, name]) => (
             <button key={id} role="tab" id={"tab-" + id} aria-controls={"panel-" + id} aria-selected={tab === id}
               className={tab === id ? "on" : ""} onClick={() => setTab(id)}>{name}</button>
           ))}
@@ -206,7 +206,8 @@ export default function AdminPage() {
       <section role="tabpanel" id={"panel-" + tab} aria-labelledby={"tab-" + tab}>
         {tab === "pedidos" && <Orders orders={orders} setOrders={setOrders} flash={flash} onAuthError={onAuthError} focusId={focusId} onFocused={() => setFocusId(null)} />}
         {tab === "agenda" && <Agenda orders={orders} onOpen={(id) => { setFocusId(id); setTab("pedidos"); }} />}
-        {tab === "pasteles" && <Cakes data={data} load={load} flash={flash} onAuthError={onAuthError} />}
+        {tab === "pasteles" && <Cakes kind="catalogo" data={data} load={load} flash={flash} onAuthError={onAuthError} />}
+        {tab === "tamanos" && <Cakes kind="tamano" data={data} load={load} flash={flash} onAuthError={onAuthError} />}
         {tab === "web" && <SiteEditor data={data} load={load} flash={flash} onAuthError={onAuthError} />}
         {tab === "catalogo" && <Catalog data={data} load={load} flash={flash} onAuthError={onAuthError} />}
         {tab === "disenos" && <Designs data={data} load={load} flash={flash} onAuthError={onAuthError} />}
@@ -748,24 +749,31 @@ function Catalog({ data, load, flash, onAuthError }) {
 
 /* ================= Pasteles del catálogo ================= */
 
-function Cakes({ data, load, flash, onAuthError }) {
+// Pestañas "Catálogo" (pasteles listos, kind="catalogo") y "Tamaños" (punto de partida del
+// pastel a tu medida, kind="tamano"). Comparten formulario; los tamaños no llevan personalizaciones.
+function Cakes({ kind = "catalogo", data, load, flash, onAuthError }) {
   const { busy, post } = usePoster(load, flash, onAuthError);
+  const sizes = kind === "tamano";
+  const word = sizes ? "tamaño" : "pastel";
   const [cake, setCake] = useState(emptyCake);
   const set = (patch) => setCake((c) => ({ ...c, ...patch }));
-  const cakes = data?.cakes || [];
+  const portionOf = (c) => { const m = String(c.name || c.portions || "").match(/\d+/); return m ? Number(m[0]) : 9999; };
+  const all = (data?.cakes || []).filter((c) => (c.kind || "catalogo") === kind);
+  const cakes = sizes ? [...all].sort((a, b) => portionOf(a) - portionOf(b) || a.id - b.id) : all;
   const customOn = data?.settings?.custom_cake !== false;
 
   async function save(e) {
     e.preventDefault();
-    if (!cake.image_url) return flash("Agrega una foto del pastel", "error");
-    if (!(Number(cake.price) > 0)) return flash("Escribe el precio del pastel", "error");
+    if (!cake.image_url) return flash(`Agrega una foto del ${word}`, "error");
+    if (!(Number(cake.price) > 0)) return flash(`Escribe el precio del ${word}`, "error");
     const { optionsText, ...rest } = cake;
-    const ok = await post({ ...rest, type: "cake", options: parseOptions(optionsText) }, cake.id ? "Pastel actualizado" : "Pastel agregado");
+    const ok = await post({ ...rest, kind, type: "cake", options: sizes ? [] : parseOptions(optionsText) },
+      cake.id ? (sizes ? "Tamaño actualizado" : "Pastel actualizado") : (sizes ? "Tamaño agregado" : "Pastel agregado"));
     if (ok) setCake(emptyCake);
   }
   async function remove(c) {
-    if (confirm(`¿Eliminar el pastel "${c.name}"? Los pedidos ya hechos no se borran.`)) {
-      if (await post({ type: "cake_delete", id: c.id }, "Pastel eliminado") && cake.id === c.id) setCake(emptyCake);
+    if (confirm(`¿Eliminar ${sizes ? "el tamaño" : "el pastel"} "${c.name}"? Los pedidos ya hechos no se borran.`)) {
+      if (await post({ type: "cake_delete", id: c.id }, sizes ? "Tamaño eliminado" : "Pastel eliminado") && cake.id === c.id) setCake(emptyCake);
     }
   }
   function edit(c) {
@@ -777,37 +785,39 @@ function Cakes({ data, load, flash, onAuthError }) {
   return (
     <>
       <div className="card" id="cake-form" style={{ marginTop: 16 }}>
-        <h2 className="h3">{cake.id ? `Editar: ${cake.name}` : "Agregar pastel al catálogo"}</h2>
-        <p className="note">Estos pasteles son lo primero que ve el cliente al pedir. El precio es fijo; las personalizaciones no tienen costo adicional.</p>
+        <h2 className="h3">{cake.id ? `Editar: ${cake.name}` : sizes ? "Agregar tamaño" : "Agregar pastel al catálogo"}</h2>
+        <p className="note">{sizes
+          ? "Los tamaños son el primer paso del “Pastel a tu medida”: el cliente elige uno y su precio es la base del pedido. Después elige el diseño (su precio se suma), los sabores y la decoración."
+          : "Estos pasteles son lo primero que ve el cliente al pedir. El precio es fijo; las personalizaciones no tienen costo adicional."}</p>
         <form onSubmit={save} className="form-grid">
-          <div><label htmlFor="c-name">Nombre *</label><input id="c-name" required maxLength={120} value={cake.name} onChange={(e) => set({ name: e.target.value })} /></div>
-          <div><label htmlFor="c-price">Precio (USD) *</label><input id="c-price" type="number" min="1" step="0.01" inputMode="decimal" required value={cake.price} onChange={(e) => set({ price: e.target.value })} /></div>
-          <div><label htmlFor="c-portions">Porciones</label><input id="c-portions" maxLength={80} placeholder="Ej.: 15-18 porciones" value={cake.portions} onChange={(e) => set({ portions: e.target.value })} /></div>
-          <div><label htmlFor="c-size">Tamaño</label><input id="c-size" maxLength={80} placeholder="Ej.: 8 pulgadas, 2 pisos" value={cake.size} onChange={(e) => set({ size: e.target.value })} /></div>
-          <div><label htmlFor="c-frosting">Tipo de merengue / cobertura</label><input id="c-frosting" maxLength={80} placeholder="Ej.: merengue suizo" value={cake.frosting} onChange={(e) => set({ frosting: e.target.value })} /></div>
+          <div><label htmlFor="c-name">Nombre *</label><input id="c-name" required maxLength={120} placeholder={sizes ? "Ej.: 15-18 porciones" : ""} value={cake.name} onChange={(e) => set({ name: e.target.value })} /></div>
+          <div><label htmlFor="c-price">{sizes ? "Precio base (USD) *" : "Precio (USD) *"}</label><input id="c-price" type="number" min="1" step="0.01" inputMode="decimal" required value={cake.price} onChange={(e) => set({ price: e.target.value })} /></div>
+          {!sizes && <div><label htmlFor="c-portions">Porciones</label><input id="c-portions" maxLength={80} placeholder="Ej.: 15-18 porciones" value={cake.portions} onChange={(e) => set({ portions: e.target.value })} /></div>}
+          <div><label htmlFor="c-size">{sizes ? "Medida" : "Tamaño"}</label><input id="c-size" maxLength={80} placeholder="Ej.: 8 pulgadas, 2 pisos" value={cake.size} onChange={(e) => set({ size: e.target.value })} /></div>
+          {!sizes && <div><label htmlFor="c-frosting">Tipo de merengue / cobertura</label><input id="c-frosting" maxLength={80} placeholder="Ej.: merengue suizo" value={cake.frosting} onChange={(e) => set({ frosting: e.target.value })} /></div>}
           <div><label className="check"><input type="checkbox" checked={cake.active !== false} onChange={(e) => set({ active: e.target.checked })} /> Visible para clientes</label></div>
           <div className="span-2"><label htmlFor="c-desc">Descripción</label>
-            <textarea id="c-desc" rows={2} maxLength={600} placeholder="Ej.: bizcocho de vainilla con relleno de fresa, decorado con rosetas." value={cake.description} onChange={(e) => set({ description: e.target.value })} /></div>
-          <div className="span-2">
+            <textarea id="c-desc" rows={2} maxLength={600} placeholder={sizes ? "Opcional" : "Ej.: bizcocho de vainilla con relleno de fresa, decorado con rosetas."} value={cake.description} onChange={(e) => set({ description: e.target.value })} /></div>
+          {!sizes && <div className="span-2">
             <label htmlFor="c-opts">Personalizaciones sin costo (una por línea)</label>
             <textarea id="c-opts" rows={3} aria-describedby="c-opts-hint" placeholder={"Color: Rosa, Azul, Blanco\nRelleno: Fresa, Chocolate, Dulce de leche"} value={cake.optionsText} onChange={(e) => set({ optionsText: e.target.value })} />
             <span id="c-opts-hint" className="hint">Formato: <strong>Nombre: opción 1, opción 2, opción 3</strong>. El cliente elige una de cada línea.</span>
             {preview.length > 0 && (
               <p className="note" style={{ marginBottom: 0 }}>El cliente verá: {preview.map((g) => `${g.name} (${g.choices.length} opciones)`).join(" · ")}</p>
             )}
-          </div>
+          </div>}
           <div><label htmlFor="c-photo">Foto *</label><input id="c-photo" type="file" accept="image/*" onChange={(e) => pickPhoto(e, (url) => set({ image_url: url }), flash)} /></div>
-          {cake.image_url && <img className="thumb-img" src={cake.image_url} alt="Vista previa del pastel" />}
+          {cake.image_url && <img className="thumb-img" src={cake.image_url} alt={`Vista previa del ${word}`} />}
           <div className="row">
             {cake.id && <button type="button" className="btn ghost" onClick={() => setCake(emptyCake)}>Cancelar</button>}
-            <button className="btn" disabled={busy}>{cake.id ? "Guardar cambios" : "Agregar pastel"}</button>
+            <button className="btn" disabled={busy}>{cake.id ? "Guardar cambios" : sizes ? "Agregar tamaño" : "Agregar pastel"}</button>
           </div>
         </form>
       </div>
 
       <div className="card" style={{ marginTop: 16 }}>
         <div className="section-head">
-          <h2 className="h3">Pasteles en el catálogo ({cakes.length})</h2>
+          <h2 className="h3">{sizes ? `Tamaños para el pastel a tu medida (${cakes.length})` : `Pasteles en el catálogo (${cakes.length})`}</h2>
           <label className="check">
             <input type="checkbox" checked={customOn} disabled={busy}
               onChange={(e) => post({ type: "setting", key: "custom_cake", value: e.target.checked }, e.target.checked ? "Opción visible" : "Opción oculta")} />
@@ -815,7 +825,9 @@ function Cakes({ data, load, flash, onAuthError }) {
           </label>
         </div>
         {cakes.length === 0 ? (
-          <p className="note">Todavía no hay pasteles. Mientras tanto, la página de pedido muestra “Pastel a tu medida” (tamaño, sabores y decoración).</p>
+          <p className="note">{sizes
+            ? "Todavía no hay tamaños. Mientras tanto, el pastel a tu medida usa los tamaños de “Opciones y envío”."
+            : "Todavía no hay pasteles. Mientras tanto, la página de pedido muestra “Pastel a tu medida” (tamaño, sabores y decoración)."}</p>
         ) : (
           <div className="cake-admin-list">
             {cakes.map((c) => (

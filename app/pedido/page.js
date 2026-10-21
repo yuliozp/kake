@@ -36,7 +36,7 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const money = (n) => "$" + Number(n || 0).toFixed(2);
 
 function OptionGrid({ items, selected, onPick, L, note }) {
-  const { t } = useI18n();
+  const { t, lang } = useI18n();
   return (
     <div className="grid" role="radiogroup">
       {items.map((o) => {
@@ -47,9 +47,10 @@ function OptionGrid({ items, selected, onPick, L, note }) {
             className={"opt" + (isOn ? " selected" : "")} onClick={() => onPick(o)}>
             {img && <img src={img} alt="" loading="lazy" />}
             <span className="meta">
-              <strong>{L(o.label)}</strong>
+              <strong>{o.base ? trFact(lang, o.label) : L(o.label)}</strong>
+              {o.sub && <span className="hint">{trFact(lang, o.sub)}</span>}
               {note && <span className="hint">{note}</span>}
-              <span className="price">{o.price_on_request ? t.priceTbd : Number(o.price) > 0 ? "+ " + money(o.price) : t.included}</span>
+              <span className="price">{o.price_on_request ? t.priceTbd : Number(o.price) > 0 ? (o.base ? "" : "+ ") + money(o.price) : t.included}</span>
             </span>
           </button>
         );
@@ -105,7 +106,7 @@ const EMPTY = {
   name: "", phone: "", email: "", address: "", smsOptIn: false,
   deliveryDate: localISO(MIN_DAYS), deliveryTime: MIN_TIME,
   deliveryType: "", deliveryAddress: "",
-  size: "", sizePrice: 0, sizeImage: "", cakeFlavor: "", fillingFlavor: "", fillingCount: "",
+  size: "", sizeId: null, sizePrice: 0, sizeImage: "", cakeFlavor: "", fillingFlavor: "", fillingCount: "",
   designId: null, designLabel: "", designImage: "", designPrice: 0, uploadPreview: "", designNotes: "",
   decorationLabel: "", decorationNotes: "", decorationPhotos: [],
 };
@@ -148,9 +149,10 @@ export default function PedidoPage() {
   const has = (cat) => by(cat).length > 0;
   const L = (label) => translateLabel(lang, label);
 
+  // Tamaños (pestaña "Tamaños" del panel): punto de partida del pastel a tu medida, de menor a mayor.
   const portionOf = (v) => { const m = String(v || "").match(/\d+/g); return m ? Number(m[0]) : 9999; };
   const sizeItems = [...(catalog.sizeCakes || [])]
-    .map((c) => ({ id: c.id, label: c.portions || c.size || c.name, image: c.image, price: Number(c.price || 0) }))
+    .map((c) => ({ id: c.id, label: c.name, sub: c.size || "", full: [c.name, c.size].filter(Boolean).join(" · "), image: c.image, price: Number(c.price || 0), base: true }))
     .sort((a, b) => portionOf(a.label) - portionOf(b.label) || a.id - b.id);
   const cakes = catalog.cakes || [];
   const hasCakes = cakes.length > 0;
@@ -163,11 +165,12 @@ export default function PedidoPage() {
     const s = [{ id: "cliente" }];
     if (hasCakes) s.push({ id: "pastel" });
     if (customMode) {
+      // Pastel a tu medida: tamaño (punto de partida) → diseño (suma su precio) → sabores → decoración.
       if ((catalog.sizeCakes || []).length || has("size")) s.push({ id: "size" });
+      s.push({ id: "diseno" });
       if (has("cake_flavor")) s.push({ id: "sabor" });
       if (has("filling")) s.push({ id: "relleno" });
       if (has("filling_count")) s.push({ id: "capas" });
-      s.push({ id: "diseno" });
       if (has("decoration")) s.push({ id: "decoracion" });
     } else {
       s.push({ id: "personaliza" });
@@ -189,7 +192,7 @@ export default function PedidoPage() {
     };
     add("delivery", form.deliveryType);
     if (customMode) {
-      if (form.size && Number(form.sizePrice) > 0) n += Number(form.sizePrice);
+      if (form.sizeId) n += Number(form.sizePrice || 0);
       else add("size", form.size);
       add("cake_flavor", form.cakeFlavor);
       add("filling", form.fillingFlavor);
@@ -323,7 +326,7 @@ export default function PedidoPage() {
           deliveryAddress: isShipping(form.deliveryType) ? shipAddress : "",
           deliveryDate: form.deliveryDate, deliveryTime: form.deliveryTime,
           ...(customMode ? {
-            size: form.size, cakeFlavor: form.cakeFlavor, fillingFlavor: form.fillingFlavor, fillingCount: form.fillingCount,
+            size: form.size, sizeId: form.sizeId, cakeFlavor: form.cakeFlavor, fillingFlavor: form.fillingFlavor, fillingCount: form.fillingCount,
             designId: form.designId,
             designLabel: form.designLabel || (form.uploadPreview || form.designNotes ? t.ownDesign : ""),
             designNotes: form.designNotes,
@@ -349,12 +352,12 @@ export default function PedidoPage() {
 
   const summary = (customMode ? [
     hasCakes && ["pastel", t.cake, t.customTitle],
-    has("size") && ["size", t.steps.size, L(form.size)],
+    (has("size") || form.sizeId) && ["size", t.steps.size, (form.sizeId ? trFact(lang, form.size) : L(form.size)) + (form.sizeId ? ` · ${money(form.sizePrice)}` : "")],
+    ["diseno", t.steps.diseno, (form.designLabel || (form.uploadPreview ? t.ownDesign : t.noDesign)) + (Number(form.designPrice) > 0 ? ` · + ${money(form.designPrice)}` : "")],
+    form.designNotes && ["diseno", t.notes, form.designNotes],
     has("cake_flavor") && ["sabor", t.steps.sabor, L(form.cakeFlavor)],
     has("filling") && ["relleno", t.steps.relleno, L(form.fillingFlavor)],
     has("filling_count") && ["capas", t.steps.capas, L(form.fillingCount)],
-    ["diseno", t.steps.diseno, form.designLabel || (form.uploadPreview ? t.ownDesign : t.noDesign)],
-    form.designNotes && ["diseno", t.notes, form.designNotes],
     has("decoration") && ["decoracion", t.steps.decoracion, L(form.decorationLabel) + (isPremiumDeco ? ` (${t.priceTbd})` : "")],
     isPremiumDeco && form.decorationNotes && ["decoracion", t.notes, form.decorationNotes],
     isPremiumDeco && form.decorationPhotos.length > 0 && ["decoracion", lang === "en" ? "Photos" : "Fotos", `${form.decorationPhotos.length}`],
@@ -524,9 +527,9 @@ export default function PedidoPage() {
             )}
             {current.id === "size" && (
               (catalog.sizeCakes || []).length
-                ? <OptionGrid items={sizeItems} selected={form.size} L={L} note={t.decoCustom}
-                    onPick={(o) => set({ size: o.label, sizePrice: Number(o.price || 0), sizeImage: o.image || "" })} />
-                : <OptionGrid items={by("size")} selected={form.size} L={L} note={t.decoCustom} onPick={(o) => set({ size: o.label, sizePrice: 0, sizeImage: "" })} />
+                ? <OptionGrid items={sizeItems} selected={form.sizeId ? sizeItems.find((o) => o.id === form.sizeId)?.label : ""} L={L}
+                    onPick={(o) => set({ size: o.full, sizeId: o.id, sizePrice: Number(o.price || 0), sizeImage: o.image || "" })} />
+                : <OptionGrid items={by("size")} selected={form.size} L={L} note={t.decoCustom} onPick={(o) => set({ size: o.label, sizeId: null, sizePrice: 0, sizeImage: "" })} />
             )}
             {current.id === "sabor" && <OptionGrid items={by("cake_flavor")} selected={form.cakeFlavor} L={L} onPick={(o) => set({ cakeFlavor: o.label })} />}
             {current.id === "relleno" && <OptionGrid items={by("filling")} selected={form.fillingFlavor} L={L} onPick={(o) => set({ fillingFlavor: o.label })} />}
