@@ -44,7 +44,10 @@ const FILTERS = [
 
 const emptyOpt = { id: null, category: "size", label: "", description: "", price: 0, image_url: "", active: true, price_on_request: false };
 const emptyDesign = { id: null, label: "", image_url: "", price: 0, active: true };
-const emptyCake = { id: null, name: "", price: "", portions: "", size: "", frosting: "", description: "", optionsText: "", image_url: "", active: true };
+// Categorías del catálogo: dan la letra del número de pedido (C26-0020). Los pedidos a tu medida usan P.
+const CAKE_CATS = [["C", "Pastel"], ["B", "Buffet"], ["M", "Minis"]];
+const CAKE_CAT_LABEL = Object.fromEntries(CAKE_CATS);
+const emptyCake = { id: null, category: "C", name: "", price: "", portions: "", size: "", frosting: "", description: "", optionsText: "", image_url: "", active: true };
 // Personalizaciones: una por línea, "Color: Rosa, Azul, Blanco".
 function parseOptions(text) {
   return String(text || "").split("\n").map((line) => {
@@ -794,6 +797,13 @@ function Cakes({ kind = "catalogo", data, load, flash, onAuthError }) {
           ? "Los tamaños son el primer paso del “Pastel a tu medida”: el cliente elige uno y su precio es la base del pedido. Después elige el diseño (su precio se suma), los sabores y la decoración."
           : "Estos pasteles son lo primero que ve el cliente al pedir. El precio es fijo; las personalizaciones no tienen costo adicional."}</p>
         <form onSubmit={save} className="form-grid">
+          {!sizes && (
+            <div><label htmlFor="c-cat">Categoría *</label>
+              <select id="c-cat" value={cake.category || "C"} onChange={(e) => set({ category: e.target.value })}>
+                {CAKE_CATS.map(([v, l]) => <option key={v} value={v}>{v} · {l}</option>)}
+              </select>
+            </div>
+          )}
           <div><label htmlFor="c-name">Nombre *</label><input id="c-name" required maxLength={120} placeholder={sizes ? "Ej.: 15-18 porciones" : ""} value={cake.name} onChange={(e) => set({ name: e.target.value })} /></div>
           <div><label htmlFor="c-price">{sizes ? "Precio base (USD) *" : "Precio (USD) *"}</label><input id="c-price" type="number" min="1" step="0.01" inputMode="decimal" required value={cake.price} onChange={(e) => set({ price: e.target.value })} /></div>
           {!sizes && <div><label htmlFor="c-portions">Porciones</label><input id="c-portions" maxLength={80} placeholder="Ej.: 15-18 porciones" value={cake.portions} onChange={(e) => set({ portions: e.target.value })} /></div>}
@@ -840,6 +850,7 @@ function Cakes({ kind = "catalogo", data, load, flash, onAuthError }) {
                 <div className="meta">
                   <strong>{c.name}</strong>
                   <span className="price">{money(c.price)}{c.active === false ? " · oculto" : ""}</span>
+                  {!sizes && <span className="note" style={{ display: "block" }}>Categoría: {c.category || "C"} · {CAKE_CAT_LABEL[c.category || "C"]}</span>}
                   <span className="note" style={{ display: "block" }}>{[c.size, c.portions, c.frosting].filter(Boolean).join(" · ")}</span>
                   {(c.options || []).length > 0 && <span className="note" style={{ display: "block" }}>Personaliza: {c.options.map((g) => g.name).join(", ")}</span>}
                   <div className="actions" style={{ marginTop: 8 }}>
