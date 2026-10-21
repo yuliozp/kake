@@ -175,10 +175,8 @@ export default function PedidoPage() {
     const s = [{ id: "cliente" }];
     if (hasCakes) s.push({ id: "pastel" });
     if (customMode) {
-      // Pastel a tu medida: tamaño (precio base) → modelo del catálogo (referencia, sin costo)
-      // → diseño (suma su precio) → color y sabores → recogida o entrega.
+      // Pastel a tu medida: tamaño (precio base) → diseño (suma su precio) → color y sabores → recogida o entrega.
       if ((catalog.sizeCakes || []).length || has("size")) s.push({ id: "size" });
-      if (hasCakes) s.push({ id: "modelo" });
       s.push({ id: "diseno" });
       if (colorChoices.length || has("cake_flavor") || has("filling")) s.push({ id: "sabores" });
     } else {
@@ -369,7 +367,6 @@ export default function PedidoPage() {
   const summary = (customMode ? [
     hasCakes && ["pastel", t.cake, t.customTitle],
     (has("size") || form.sizeId) && ["size", t.steps.size, (form.sizeId ? trFact(lang, form.size) : L(form.size)) + (form.sizeId ? ` · ${money(form.sizePrice)}` : "")],
-    hasCakes && ["modelo", t.steps.modelo, model ? L(model.name) : ""],
     ["diseno", t.steps.diseno, (form.designLabel || (form.uploadPreview ? t.ownDesign : t.noDesign)) + (Number(form.designPrice) > 0 ? ` · + ${money(form.designPrice)}` : "")],
     form.designNotes && ["diseno", t.notes, form.designNotes],
     colorChoices.length > 0 && ["sabores", L("Color"), L(form.color)],
