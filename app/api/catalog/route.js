@@ -22,7 +22,7 @@ export async function GET() {
         }
       }
     }
-    return NextResponse.json(data);
+    return NextResponse.json(data, { headers: { "Cache-Control": "no-store, max-age=0" } });
   } catch (e) {
     console.error("[catalog]", e);
     return NextResponse.json({ error: "Catálogo no disponible" }, { status: 500 });
